@@ -38,4 +38,35 @@ tuple<int, vector<string> > read_wannier_file(const string wannier_filename)
 return tuple<int, vector<string> >(num_wann,hopping_list); 
 };
 
+vector< tuple<string, array<double, 3> > > read_xyz_file(const string xyz_filename)
+{
+    ifstream input_file(xyz_filename.c_str());
+    int num_sites;
+    input_file>>num_sites;
+    std::cout<<"Reading the "<<num_sites<<" orbitals from file: "<<xyz_filename<<std::endl;
+
+    vector< tuple<string, array<double, 3> > > xyz_data;
+    std::string label;
+    array<double, 3>  pos;
+
+    for( int i = 0; i < num_sites; i++)
+    {
+       input_file>>label>>pos[0]>>pos[1]>>pos[2];
+       xyz_data.push_back(tuple<string, array<double, 3> > (label,pos) );
+    } 
+    return xyz_data;
+};
+
+array< array<double,3> , 3 >  read_unit_cell_file(const string uc_filename)
+{
+    constexpr int DIM = 3;
+    ifstream input_file(uc_filename.c_str());
+    array< array<double,DIM> , DIM > unit_cell;
+    for( auto & lat_vec : unit_cell )
+    for( auto & li : lat_vec )
+       input_file>>li;
+    return unit_cell;
+
+};
+
 

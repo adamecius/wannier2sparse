@@ -22,7 +22,7 @@ set(APP_SOURCES
 set(LIBRARY_NAME wannierlib)
 
 # Define the library
-add_library(${LIBRARY_NAME} SHARED ${LIB_SOURCES})
+add_library(${LIBRARY_NAME} STATIC ${LIB_SOURCES})
 
 # Set the build version. It will be used in the name of the lib, with corresponding
 # symlinks created. SOVERSION could also be specified for api version. 

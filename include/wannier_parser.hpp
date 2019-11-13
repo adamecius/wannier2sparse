@@ -2,6 +2,9 @@
 #define WANNIER_PARSER
 
 #include <string>
+#include <map>
+#include <array>
+#include <sstream>
 #include <vector>
 #include <tuple>
 #include <iostream>
@@ -22,6 +25,8 @@ inline int safe_stoi(const std::string& s ){
 
 tuple<int, vector<string> > read_wannier_file(const string wannier_filename);
 
+vector< tuple<string, array<double, 3> > > read_xyz_file(const string xyz_filename);
 
+array< array<double,3> , 3 >  read_unit_cell_file(const string uc_filename);
 
 #endif

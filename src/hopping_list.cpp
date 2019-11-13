@@ -1,7 +1,10 @@
 #include "hopping_list.hpp"
-
+#include <functional>
 #include<iostream>
 #include<limits>
+
+
+
 hopping_list create_hopping_list( tuple<int, vector<string> > wannier_data  )
 {
     typedef complex<double> complexd;
@@ -15,10 +18,9 @@ hopping_list create_hopping_list( tuple<int, vector<string> > wannier_data  )
         stringstream ss(line);
                
         array<int, 3> tag; string text_tag; 
-        for( auto& ti : tag){
+        for( auto& ti : tag)
             ss>>ti;
-            text_tag += to_string(ti)+" ";
-        }
+        text_tag = tag_to_label(tag);
 
         int forb,torb; 
         ss>>forb>>torb; //initial and final vertex defining a hopping
@@ -34,26 +36,34 @@ hopping_list create_hopping_list( tuple<int, vector<string> > wannier_data  )
         }
     }
 
-const int hl.num_wann=10;
-const array<int, 3> sc_dims( {2,2,2} ) ; 
-const int num_cells = sc_dims[0]*sc_dims[1]*sc_dims[2];
-const vector< array<int, 3> > sc_tags(num_cells ) ; 
-vector< tuple<int,int> > uc_vertex_edge( hl.vertex_edge);
+return hl; 
+}   
 
-for (auto const& sc_tag: sc_tags ){
-    vertexExtender expanded_vertices(sc_tag,uc_vertex_edge);
-    hl.vertex_edge.append( expanded_vertices.begin(),expanded_vertices.end() )
+hopping_list wrap_in_supercell(const array<int, 3> cellDim, hopping_list hl ){
+
+    typedef complex<double> complexd;
+    typedef tuple< array<int, 3>,complexd> hopping_value;
+    hopping_list sc_hl; //the hopping list for the supercell
+
+    //Go through all the hopping list defined in the unit cell 
+    //map the cell indexes into the new dimensions of the super cell
+    //and add the values when it correspond
+    for (auto const& hop : hl.hoppings){
+        auto cellID_value_pair = hop.second;
+        auto cellID = get<0>(cellID_value_pair);
+        auto value = get<1>(cellID_value_pair);
+
+        //wrap tag_indexes around the super_cell 
+        for( size_t i=0; i < cellID.size(); i++)
+            cellID[i]=( cellID[i]+cellDim[i])%cellDim[i];
+        
+        //look for the cell with the same ID and create or add the value
+        string cellID_tag = tag_to_label(cellID);
+        if (sc_hl.hoppings.count(cellID_tag) ==  0)
+            sc_hl.hoppings.insert( { cellID_tag, hopping_value(cellID,value) } );
+        else
+            get<1>(sc_hl.hoppings[cellID_tag]) += value; 
+    }
+return sc_hl; 
 }
 
-return hl; }
-/*
-for (auto const& hop : hl.hoppings){
-    
-     array<int, 3> tag = get<0>(hop.second);
-    cout << hop.first<< endl;
-    cout << hop.first  // string (key)
-         << ':'
-         << tag[0]<<" "<<tag[1]<<" "<<tag[2]<<endl
-         << get<1>(hop.second) // string's value
-         << endl ;
-}    */

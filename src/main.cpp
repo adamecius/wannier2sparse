@@ -22,9 +22,16 @@ const string  label = arguments[0]; arguments.pop_front();
 cout<<"Using "<<label<<" as the system's identification label"<<endl
          <<"This label will be used to detect the label.xyz, label_hr.dat, and label.win files"<<endl;
 
+const string xyz_filename = label+".xyz";
+read_xyz_file(xyz_filename);
+
+const string uc_filename = label+".xyz";
+read_unit_cell_file(uc_filename);
 
 const string wannier_filename = label+"_hr.dat";
-hopping_list hops  = create_hopping_list(read_wannier_file(wannier_filename));
+const array<int, 3> cellDim={3,3,3};
+hopping_list hops  =wrap_in_supercell(cellDim, create_hopping_list(read_wannier_file(wannier_filename) ) );
 
 
+cout<<"The programa finished"<<std::endl;
 return 0;}
