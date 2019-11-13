@@ -11,14 +11,14 @@ hopping_list create_hopping_list( tuple<int, vector<string> > wannier_data  )
     const vector<string> hopping_lines= get<1>(wannier_data); //strings containing the hopping data
     for (auto line : hopping_lines){
         stringstream ss(line);
-               
+        ss.precision( numeric_limits<double>::digits10+2);
+       
         hopping_list::cellID_t cellID; 
         for( auto& x : cellID)
             ss>>x;
 
         hopping_list::edge_t vertex_edge; 
-        for( auto& x : vertex_edge)
-            ss>>x;        
+        for( auto& x : vertex_edge){ ss>>x; x-=1; }//The input is assumed to be zero based        
         
         double re,im; ss>>re>>im; 
         hopping_list::value_t hop_value(re,im);
@@ -59,9 +59,9 @@ hopping_list wrap_in_supercell(const array<int, 3> cellDim,const hopping_list hl
         //look for the cell with the same ID and create or add the value
         string cellID_tag = get_tag(cellID,edge);
         if (sc_hl.hoppings.count(cellID_tag) ==  0)
-            sc_hl.hoppings.insert( { cellID_tag, hopping_list::hopping_t(cellID,get<1>(hop),edge) } );
+            sc_hl.hoppings.insert( { cellID_tag, hopping_list::hopping_t(cellID,value,edge) } );
         else
-            get<1>(sc_hl.hoppings[cellID_tag]) += get<1>(hop); 
+            get<1>(sc_hl.hoppings[cellID_tag]) += value; 
     }
 return sc_hl; 
 };

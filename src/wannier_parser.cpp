@@ -7,7 +7,10 @@ tuple<int, vector<string> > read_wannier_file(const string wannier_filename)
     vector< string > wz_gpoints; 
     vector< string > hopping_list; 
 
-    ifstream input_file(wannier_filename.c_str()); assert(input_file.is_open());
+    ifstream input_file(wannier_filename.c_str()); 
+    assert(input_file.is_open());
+    input_file.precision( numeric_limits<double>::digits10+2);
+
     string line; 
     for( int counter = 0; getline(input_file, line); counter++){
         switch( counter ){
@@ -30,7 +33,6 @@ tuple<int, vector<string> > read_wannier_file(const string wannier_filename)
             }
             default:
                 hopping_list.push_back( line );
-            std::cout<<line<<std::endl;
         }
     }
     input_file.close();        

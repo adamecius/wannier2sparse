@@ -5,6 +5,8 @@
 #include <tuple>
 #include <complex>
 #include <map>
+#include <iostream>
+#include <limits>
 
 using namespace std;
 
@@ -14,6 +16,8 @@ struct hopping_list
     typedef array<int, 2> edge_t;
     typedef array<int, 3> cellID_t;
     typedef tuple< cellID_t,value_t,edge_t > hopping_t;
+
+    hopping_list():cellSizes({1,1,1}), num_wann(0){};
 
     cellID_t Bounds()
     {
@@ -30,6 +34,25 @@ struct hopping_list
         index += ( cidx.back()+bounds.back() )%( bounds.back() );
         return index;
     };
+    bool operator ==(hopping_list& y )
+    {
+        bool list_equal = true;
+        for( auto const& elem: y.hoppings )
+        {
+            auto key = elem.first;
+            if( this->hoppings.count(key) == 0 )
+            {
+                list_equal = false;    
+                break;
+            }
+            list_equal*= (bool)(get<0>(this->hoppings[key])==get<0>(elem.second ));
+//          std::cou<<"FIX_EQUAL"  list_equal*=  (bool)( sqrt(norm( get<1>(this->hoppings[key]) - get<1>(elem.second) )) < numeric_limits<double>::epsilon() );
+            list_equal*= (bool)(get<2>(this->hoppings[key])==get<2>(elem.second ));
+        }
+        return  ( this->num_wann ==y.num_wann)&&
+                (this->cellSizes==y.cellSizes)&&
+                list_equal;
+    }
 
     int num_wann;
     cellID_t cellSizes;

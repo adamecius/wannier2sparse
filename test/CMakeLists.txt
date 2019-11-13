@@ -6,7 +6,7 @@
 file(GLOB_RECURSE TEST_FILES RELATIVE ${CMAKE_CURRENT_SOURCE_DIR} *.cpp)
 
 set( TEST_ROOT ${CMAKE_BINARY_DIR}/test)
-configure_file(graphene_hr.dat "${TEST_ROOT}/read_wannier_file/graphene_hr.dat" COPYONLY)
+configure_file(graphene_hr.dat "${TEST_ROOT}/model_from_files/graphene_hr.dat" COPYONLY)
 
 
 set(MAIN_LIBRARY wannierlib)

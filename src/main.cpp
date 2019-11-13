@@ -8,6 +8,7 @@
 using namespace std;
 
 int main( int argc, char* argv[]){
+
 deque< string > arguments(argv,argv+argc);
 const string program_name = arguments[0]; arguments.pop_front();  
 
@@ -20,7 +21,7 @@ if( arguments.empty() )
 const string  label = arguments[0]; arguments.pop_front();  
 
 cout<<"Using "<<label<<" as the system's identification label"<<endl
-         <<"This label will be used to detect the label.xyz, label_hr.dat, and label.win files"<<endl;
+    <<"This label will be used to detect the label.xyz, label_hr.dat, and label.win files"<<endl;
 
 const string xyz_filename = label+".xyz";
 read_xyz_file(xyz_filename);
