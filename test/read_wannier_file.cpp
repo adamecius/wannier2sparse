@@ -22,7 +22,7 @@ int main( int argc, char* argv[]){
     hopping_data.push_back("   1    0    0    2    1    1.000000   -0.000000");
     hopping_data.push_back("   0    1    0    2    1    1.000000   -0.000000");
     tuple<int, vector<string> > wan_data = read_wannier_file("graphene_hr.dat");
-    tuple<int, vector<string> > wan_data
+
     assert(
         num_wann == get<0>(wan_data) &&
         hopping_data == get<1>(wan_data) 
