@@ -13,9 +13,9 @@ tuple<int, vector<string> > read_wannier_file(const string wannier_filename)
         switch( counter ){
             case 0 : continue;  //ignore data or comments
             
-            case 1 : num_wann = safe_stoi(line  ); continue;
+            case 1 : num_wann = safe_stoi(line  ); assert(num_wann>0); continue;
             
-            case 2 : nrpts = safe_stoi(line); continue;
+            case 2 : nrpts = safe_stoi(line); assert(num_wann>0); continue;
             
             case 3 :{   //Read all Wigner-Seitz grid-points
                 const int nrpts_lines = nrpts/15;   //the format impose 15 grid-points per line.  
@@ -40,19 +40,19 @@ return tuple<int, vector<string> >(num_wann,hopping_list);
 
 vector< tuple<string, array<double, 3> > > read_xyz_file(const string xyz_filename)
 {
+    typedef tuple<string, array<double, 3> > xyz_elem;
+    vector< xyz_elem > xyz_data;
     ifstream input_file(xyz_filename.c_str());
+    input_file.precision( numeric_limits<double>::digits10+2);
     int num_sites;
-    input_file>>num_sites;
-    std::cout<<"Reading the "<<num_sites<<" orbitals from file: "<<xyz_filename<<std::endl;
+    input_file>>num_sites; assert(num_sites>0);
 
-    vector< tuple<string, array<double, 3> > > xyz_data;
     std::string label;
     array<double, 3>  pos;
-
     for( int i = 0; i < num_sites; i++)
     {
        input_file>>label>>pos[0]>>pos[1]>>pos[2];
-       xyz_data.push_back(tuple<string, array<double, 3> > (label,pos) );
+       xyz_data.push_back(xyz_elem(label,pos) );
     } 
     return xyz_data;
 };
@@ -60,7 +60,8 @@ vector< tuple<string, array<double, 3> > > read_xyz_file(const string xyz_filena
 array< array<double,3> , 3 >  read_unit_cell_file(const string uc_filename)
 {
     constexpr int DIM = 3;
-    ifstream input_file(uc_filename.c_str());
+    ifstream input_file(uc_filename.c_str()); 
+    input_file.precision( numeric_limits<double>::digits10+2);
     array< array<double,DIM> , DIM > unit_cell;
     for( auto & lat_vec : unit_cell )
     for( auto & li : lat_vec )
