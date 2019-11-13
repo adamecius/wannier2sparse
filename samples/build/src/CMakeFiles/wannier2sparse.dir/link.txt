@@ -1,1 +1,0 @@
-/usr/bin/c++      CMakeFiles/wannier2sparse.dir/main.cpp.o  -o ../wannier2sparse ../lib/libwannierlib.so.1.0.0 -Wl,-rpath,/data/jgarcia/codes/wannier2sparse/build/lib: 

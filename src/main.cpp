@@ -25,13 +25,13 @@ cout<<"Using "<<label<<" as the system's identification label"<<endl
 const string xyz_filename = label+".xyz";
 read_xyz_file(xyz_filename);
 
-const string uc_filename = label+".xyz";
+const string uc_filename = label+".uc";
 read_unit_cell_file(uc_filename);
 
 const string wannier_filename = label+"_hr.dat";
 const array<int, 3> cellDim={3,3,3};
-hopping_list hops  =wrap_in_supercell(cellDim, create_hopping_list(read_wannier_file(wannier_filename) ) );
+hopping_list hl  =wrap_in_supercell(cellDim, create_hopping_list(read_wannier_file(wannier_filename) ) );
 
-
+save_hopping_list_as_csr("test", hl);
 cout<<"The programa finished"<<std::endl;
 return 0;}
