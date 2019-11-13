@@ -1,0 +1,4 @@
+read_xyz_file 12 0.000406404
+read_wannier_file 2 0.00208795
+read_unit_cell_file 12 0.000633995
+---

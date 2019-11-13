@@ -7,7 +7,7 @@ tuple<int, vector<string> > read_wannier_file(const string wannier_filename)
     vector< string > wz_gpoints; 
     vector< string > hopping_list; 
 
-    ifstream input_file(wannier_filename.c_str());
+    ifstream input_file(wannier_filename.c_str()); assert(input_file.is_open());
     string line; 
     for( int counter = 0; getline(input_file, line); counter++){
         switch( counter ){
@@ -15,7 +15,7 @@ tuple<int, vector<string> > read_wannier_file(const string wannier_filename)
             
             case 1 : num_wann = safe_stoi(line  ); assert(num_wann>0); continue;
             
-            case 2 : nrpts = safe_stoi(line); assert(num_wann>0); continue;
+            case 2 : nrpts = safe_stoi(line); assert(nrpts>0); continue;
             
             case 3 :{   //Read all Wigner-Seitz grid-points
                 const int nrpts_lines = nrpts/15;   //the format impose 15 grid-points per line.  
@@ -30,6 +30,7 @@ tuple<int, vector<string> > read_wannier_file(const string wannier_filename)
             }
             default:
                 hopping_list.push_back( line );
+            std::cout<<line<<std::endl;
         }
     }
     input_file.close();        
@@ -42,7 +43,7 @@ vector< tuple<string, array<double, 3> > > read_xyz_file(const string xyz_filena
 {
     typedef tuple<string, array<double, 3> > xyz_elem;
     vector< xyz_elem > xyz_data;
-    ifstream input_file(xyz_filename.c_str());
+    ifstream input_file(xyz_filename.c_str()); assert(input_file.is_open());
     input_file.precision( numeric_limits<double>::digits10+2);
     int num_sites;
     input_file>>num_sites; assert(num_sites>0);
@@ -60,7 +61,7 @@ vector< tuple<string, array<double, 3> > > read_xyz_file(const string xyz_filena
 array< array<double,3> , 3 >  read_unit_cell_file(const string uc_filename)
 {
     constexpr int DIM = 3;
-    ifstream input_file(uc_filename.c_str()); 
+    ifstream input_file(uc_filename.c_str()); assert(input_file.is_open());
     input_file.precision( numeric_limits<double>::digits10+2);
     array< array<double,DIM> , DIM > unit_cell;
     for( auto & lat_vec : unit_cell )

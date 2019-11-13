@@ -15,7 +15,7 @@ set(MAIN_LIBRARY wannierlib)
 set(ALL_TESTS)
 foreach(FILE ${TEST_FILES})
     string(REGEX REPLACE ".cpp" "" NAME ${FILE}) # create exe name
-    set( TEST_DIR "${TEST_ROOT}/test/${NAME}")
+    set( TEST_DIR "${TEST_ROOT}/${NAME}")
     set(CMAKE_RUNTIME_OUTPUT_DIRECTORY "${TEST_DIR}" ) #create a directory for the test
     add_executable(${NAME} ${FILE})
     target_link_libraries(${NAME} ${MAIN_LIBRARY} ) # link against our lib and boost test

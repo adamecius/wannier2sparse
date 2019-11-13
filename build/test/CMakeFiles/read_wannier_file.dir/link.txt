@@ -1,0 +1,1 @@
+/usr/bin/c++      CMakeFiles/read_wannier_file.dir/read_wannier_file.cpp.o  -o read_wannier_file/read_wannier_file ../lib/libwannierlib.a 
