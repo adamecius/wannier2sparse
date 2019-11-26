@@ -7,8 +7,20 @@
 #include <map>
 #include <iostream>
 #include <limits>
+#include <cassert>
+#include <functional>
+#include<iostream>
+#include<limits>
+#include<algorithm>
 
 using namespace std;
+
+inline int 
+index_aliasing(const array<int, 3>& index,const array<int, 3>& bound )
+{
+    return ( (index[2]+bound[2])%bound[2] * bound[1] + (index[1]+bound[1])%bound[1] ) * bound[0] + (index[0]+bound[0])%bound[0] ;
+}
+
 
 struct hopping_list
 {
@@ -18,6 +30,27 @@ struct hopping_list
     typedef tuple< cellID_t,value_t,edge_t > hopping_t;
 
     hopping_list():cellSizes({1,1,1}), num_wann(0){};
+
+    inline int WannierBasisSize() const
+    {
+        return this-> num_wann ; 
+    };
+
+    inline void SetWannierBasisSize(const int num_wann)
+    {
+        assert( num_wann > 0 );
+        this-> num_wann  = num_wann;
+        return ; 
+    };
+
+    inline void SetBounds(const cellID_t& cellSizes)
+    {
+        assert( this-> num_wann > 0 && cellSizes[0]>0&& cellSizes[1]>0&&cellSizes[2]>0 );
+        this->cellSizes = cellSizes;
+        for(const auto& x: cellSizes ) 
+            this->num_wann *=x;
+        return ; 
+    };
 
     cellID_t Bounds()
     {
@@ -42,12 +75,25 @@ struct hopping_list
             auto key = elem.first;
             if( this->hoppings.count(key) == 0 )
             {
+                std::cout<<"The key: "<<key<<" was not found when comparing the hopping lists"<<std::endl;
                 list_equal = false;    
                 break;
             }
-            list_equal*= (bool)(get<0>(this->hoppings[key])==get<0>(elem.second ));
-//          std::cou<<"FIX_EQUAL"  list_equal*=  (bool)( sqrt(norm( get<1>(this->hoppings[key]) - get<1>(elem.second) )) < numeric_limits<double>::epsilon() );
-            list_equal*= (bool)(get<2>(this->hoppings[key])==get<2>(elem.second ));
+            list_equal*= (bool)(get<0>(this->hoppings[key])==get<0>(elem.second));
+            list_equal*= (bool)(get<2>(this->hoppings[key])==get<2>(elem.second));
+
+            auto val_diff= (get<1>(this->hoppings[key])-get<1>(elem.second ))/2.0;
+            auto val_sum = (get<1>(this->hoppings[key])+get<1>(elem.second ))/2.0;
+
+            if(!( val_diff.real()==0&& val_diff.imag()==0 ) )
+            {
+                list_equal*= (bool)(
+                                std::fabs(val_diff.real()/val_sum.real()) < std::numeric_limits<double>::epsilon() && 
+                                std::fabs(val_diff.imag()/val_sum.imag()) < std::numeric_limits<double>::epsilon() 
+                                );
+                if(!list_equal)
+                    std::cout<<"The keys "<<key<<" have hoppings with a percentile difference higher than "<< std::numeric_limits<double>::epsilon()<<std::endl;
+            }
         }
         return  ( this->num_wann ==y.num_wann)&&
                 (this->cellSizes==y.cellSizes)&&
@@ -61,7 +107,7 @@ struct hopping_list
 
 hopping_list create_hopping_list( tuple<int, vector<string> > wannier_data  );
 
-hopping_list wrap_in_supercell(const array<int, 3> cellDim, hopping_list hl );
+hopping_list wrap_in_supercell(const hopping_list::cellID_t& cellDim,const hopping_list hl);
 
 inline string get_tag(const hopping_list::cellID_t& cid,const hopping_list::edge_t edge){
     string text_tag;
