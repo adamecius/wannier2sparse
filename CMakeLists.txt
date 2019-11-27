@@ -43,6 +43,7 @@ set(VERSION ${VERSION_MAJOR}.${VERSION_MINOR}.${VERSION_PATCH})
 include_directories(
     ${PROJECT_SOURCE_DIR}/include
     ${PROJECT_BINARY_DIR}/include   # add the binary tree to the search path so that we will find Version.h
+    /usr/include/eigen3/
 #    ${Boost_INCLUDE_DIRS}
 )
 

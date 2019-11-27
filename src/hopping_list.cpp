@@ -62,7 +62,7 @@ hopping_list wrap_in_supercell(const hopping_list::cellID_t& cellDim,const hoppi
 
             //Insert the hoppinhs
             assert( edge[0]< sc_hl.WannierBasisSize() );
-            assert( edge[11]< sc_hl.WannierBasisSize() );
+            assert( edge[1]< sc_hl.WannierBasisSize() );
             assert( cellID== hopping_list::cellID_t({0,0,0}) );
             string cellID_tag = get_tag(cellID,edge);
 

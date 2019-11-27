@@ -1,0 +1,89 @@
+Start testing: Nov 27 12:06 CET
+----------------------------------------------------------
+1/4 Testing: density_and_current_from_files
+1/4 Test: density_and_current_from_files
+Command: "/data/jgarcia/codes/wannier2sparse/build/test/density_and_current_from_files/density_and_current_from_files"
+Directory: /data/jgarcia/codes/wannier2sparse/build/test/density_and_current_from_files
+"density_and_current_from_files" start time: Nov 27 12:06 CET
+Output:
+----------------------------------------------------------
+Opening File: spin_graphene.xyz
+Creating the spin Current matrix J0Sx
+Sucess.
+Creating the spin Current matrix J0Sy
+Sucess.
+Creating the spin Current matrix J0Sz
+Sucess.
+Creating the spin Density matrix Sx
+Sucess.
+Creating the spin Density matrix Sy
+Sucess.
+Creating the spin Density matrix Sz
+Sucess.
+Performing  WRAP IN SUPERCELL FOR UNIT_CELL TEST
+WRAP IN SUPERCELL FOR UNIT_CELL TEST
+
+<end of output>
+Test time =   0.00 sec
+----------------------------------------------------------
+Test Passed.
+"density_and_current_from_files" end time: Nov 27 12:06 CET
+"density_and_current_from_files" time elapsed: 00:00:00
+----------------------------------------------------------
+
+2/4 Testing: read_xyz_file
+2/4 Test: read_xyz_file
+Command: "/data/jgarcia/codes/wannier2sparse/build/test/read_xyz_file/read_xyz_file"
+Directory: /data/jgarcia/codes/wannier2sparse/build/test/read_xyz_file
+"read_xyz_file" start time: Nov 27 12:06 CET
+Output:
+----------------------------------------------------------
+Opening File: example.xyz
+<end of output>
+Test time =   0.00 sec
+----------------------------------------------------------
+Test Passed.
+"read_xyz_file" end time: Nov 27 12:06 CET
+"read_xyz_file" time elapsed: 00:00:00
+----------------------------------------------------------
+
+3/4 Testing: read_unit_cell_file
+3/4 Test: read_unit_cell_file
+Command: "/data/jgarcia/codes/wannier2sparse/build/test/read_unit_cell_file/read_unit_cell_file"
+Directory: /data/jgarcia/codes/wannier2sparse/build/test/read_unit_cell_file
+"read_unit_cell_file" start time: Nov 27 12:06 CET
+Output:
+----------------------------------------------------------
+<end of output>
+Test time =   0.01 sec
+----------------------------------------------------------
+Test Passed.
+"read_unit_cell_file" end time: Nov 27 12:06 CET
+"read_unit_cell_file" time elapsed: 00:00:00
+----------------------------------------------------------
+
+4/4 Testing: model_from_files
+4/4 Test: model_from_files
+Command: "/data/jgarcia/codes/wannier2sparse/build/test/model_from_files/model_from_files"
+Directory: /data/jgarcia/codes/wannier2sparse/build/test/model_from_files
+"model_from_files" start time: Nov 27 12:06 CET
+Output:
+----------------------------------------------------------
+Performing GRAPHENE HR TEST
+GRAPHENE HR TEST PASSED
+
+Performing  WRAP IN SUPERCELL FOR UNIT_CELL TEST
+WRAP IN SUPERCELL FOR UNIT_CELL TEST
+
+PERFORMING WRAP IN SUPERCELL FINAL TEST
+WRAP IN SUPERCELL FINAL TEST PASSED
+
+<end of output>
+Test time =   0.00 sec
+----------------------------------------------------------
+Test Passed.
+"model_from_files" end time: Nov 27 12:06 CET
+"model_from_files" time elapsed: 00:00:00
+----------------------------------------------------------
+
+End testing: Nov 27 12:06 CET

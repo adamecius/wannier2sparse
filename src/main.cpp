@@ -2,7 +2,7 @@
 #include <string>
 #include <iostream>
 
-#include "wannier_parser.hpp"
+#include "tbmodel.hpp"
 #include "hopping_list.hpp"
 
 using namespace std;
@@ -19,20 +19,30 @@ if( arguments.empty() )
 }
 
 const string  label = arguments[0]; arguments.pop_front();  
-
 cout<<"Using "<<label<<" as the system's identification label"<<endl
     <<"This label will be used to detect the label.xyz, label_hr.dat, and label.win files"<<endl;
 
-const string xyz_filename = label+".xyz";
-read_xyz_file(xyz_filename);
+array<int, 3> cellDim={1,1,1};
+for(int i = 0 ; i < 3 ; i++ )
+{
+    assert( !arguments.empty() );
+    cellDim[i] = stoi(arguments[0]); arguments.pop_front();  
+}
 
-const string uc_filename = label+".uc";
-read_unit_cell_file(uc_filename);
+tbmodel model;
 
-const string wannier_filename = label+"_hr.dat";
-const array<int, 3> cellDim={3,3,3};
-hopping_list hl  =wrap_in_supercell(cellDim, create_hopping_list(read_wannier_file(wannier_filename) ) );
+model.readOrbitalPositions(label+".xyz");
+model.readUnitCell(label+".uc");
+model.readWannierModel(label+"_hr.dat");    
 
-save_hopping_list_as_csr("test", hl);
+std::cout<<"Creating the supercell ("<<cellDim[0]<<","<<cellDim[1]<<","<<cellDim[2]<<")"<<std::endl;
+save_hopping_list_as_csr("HAM.CSR"  , wrap_in_supercell(cellDim, model.hl) );
+save_hopping_list_as_csr("JX.CSR"   , wrap_in_supercell(cellDim, model.createHoppingCurrents_list(0)) );
+save_hopping_list_as_csr("JYSZ.CSR" , wrap_in_supercell(cellDim, model.createHoppingSpinCurrents_list(1,'z')) );
+save_hopping_list_as_csr("SX.CSR"   , wrap_in_supercell(cellDim, model.createHoppingSpinDensity_list('x')) );
+save_hopping_list_as_csr("SY.CSR"   , wrap_in_supercell(cellDim, model.createHoppingSpinDensity_list('y')) );
+save_hopping_list_as_csr("SZ.CSR"   , wrap_in_supercell(cellDim, model.createHoppingSpinDensity_list('z')) ); 
+std::cout<<"Supercells created successfully"<<std::endl;
+
 cout<<"The programa finished"<<std::endl;
 return 0;}

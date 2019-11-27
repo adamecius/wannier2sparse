@@ -8,9 +8,9 @@ file(GLOB_RECURSE TEST_FILES RELATIVE ${CMAKE_CURRENT_SOURCE_DIR} *.cpp)
 set( TEST_ROOT ${CMAKE_BINARY_DIR}/test)
 configure_file(graphene_hr.dat "${TEST_ROOT}/model_from_files/graphene_hr.dat" COPYONLY)
 
-configure_file(graphene_hr.dat "${TEST_ROOT}/density_and_current_from_files/graphene_hr.dat" COPYONLY)
-configure_file(graphene.uc "${TEST_ROOT}/density_and_current_from_files/graphene.uc" COPYONLY)
-configure_file(graphene.xyz "${TEST_ROOT}/density_and_current_from_files/graphene.xyz" COPYONLY)
+configure_file(spin_graphene_hr.dat "${TEST_ROOT}/density_and_current_from_files/spin_graphene_hr.dat" COPYONLY)
+configure_file(spin_graphene.uc "${TEST_ROOT}/density_and_current_from_files/spin_graphene.uc" COPYONLY)
+configure_file(spin_graphene.xyz "${TEST_ROOT}/density_and_current_from_files/spin_graphene.xyz" COPYONLY)
 
 
 set(MAIN_LIBRARY wannierlib)

@@ -45,6 +45,7 @@ vector< tuple<string, array<double, 3> > > read_xyz_file(const string xyz_filena
 {
     typedef tuple<string, array<double, 3> > xyz_elem;
     vector< xyz_elem > xyz_data;
+    std::cout<<"Opening File: "<<xyz_filename.c_str()<<std::endl;
     ifstream input_file(xyz_filename.c_str()); assert(input_file.is_open());
     input_file.precision( numeric_limits<double>::digits10+2);
     int num_sites;

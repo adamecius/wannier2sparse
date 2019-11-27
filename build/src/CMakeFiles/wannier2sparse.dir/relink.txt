@@ -1,0 +1,1 @@
+/usr/bin/c++      CMakeFiles/wannier2sparse.dir/main.cpp.o  -o CMakeFiles/CMakeRelink.dir/wannier2sparse ../lib/libwannierlib.a 

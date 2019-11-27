@@ -1,3 +1,5 @@
+#ifndef HOPPING_LIST 
+#define HOPPING_LIST
 #include <string>
 #include <sstream>
 #include <array>
@@ -5,6 +7,7 @@
 #include <tuple>
 #include <complex>
 #include <map>
+#include <fstream>
 #include <iostream>
 #include <limits>
 #include <cassert>
@@ -12,6 +15,8 @@
 #include<iostream>
 #include<limits>
 #include<algorithm>
+#include"sparse_matrix.hpp"
+#include <iostream>
 
 using namespace std;
 
@@ -125,28 +130,47 @@ inline array<int,5> tag_to_indices(const string& tag){
         ss>>ti;
 return indices; 
 }
-#include <iostream>
 
-
-
-inline void save_hopping_list_as_csr(string output_filename, hopping_list& hl){
-
-    hopping_list sc_hl;
-    
-    for(auto const& key_hop : hl.hoppings){
-
-        const auto key = key_hop.first;
-        const auto hop = key_hop.second;
-        auto cellID = get<0>(hop);
-        auto value  = get<1>(hop);
-        auto edge   = get<2>(hop);
-        
-        int 
-        row=hl.cellID_index(cellID)*hl.num_wann + get<0>(edge),
-        col=hl.cellID_index(cellID)*hl.num_wann + get<1>(edge);
-
-        std::cout<<row<<" "<<col<<" "<<value<<std::endl;
-
+inline void save_hopping_list_as_csr(string output_filename,const hopping_list& hl)
+{
+    const size_t dim = hl.WannierBasisSize();
+    SparseMatrix_t output(dim,dim);
+    std::vector<Triplet_t> coefficients;            // list of non-zeros coefficients
+    for(auto const& elem : hl.hoppings)
+    {
+        const auto value  = get<1>(elem.second);
+        const auto edge   = get<2>(elem.second);
+        coefficients.push_back(Triplet_t(edge[0],edge[1],value) );
     }
+    output.setFromTriplets(coefficients.begin(), coefficients.end());
+    output.makeCompressed();
+
+
+	std::ofstream matrix_file ( output_filename.c_str()) ;
+
+	//READ DIMENSION OF THE MATRIX
+	matrix_file<<dim<<" "<<output.nonZeros()<<std::endl; 
+
+    //save values first
+    for (int k=0; k<output.outerSize(); ++k)
+    for (SparseMatrix_t::InnerIterator it(output,k); it; ++it)
+        matrix_file<<it.value().real()<<" "<<it.value().imag()<<" ";
+    matrix_file<<std::endl;
+
+    //save the columns
+    for (int k=0; k<output.outerSize(); ++k)
+    for (SparseMatrix_t::InnerIterator it(output,k); it; ++it)
+        matrix_file<<it.index()<<" ";
+    matrix_file<<std::endl;
+
+    //save the indices to columns
+    for (int k=0; k<output.outerSize()+1; ++k)
+        matrix_file<<*( output.outerIndexPtr() + k ) <<" ";
+    matrix_file<<std::endl;
+
+    matrix_file.close();
+
 return ; 
 }
+
+#endif
