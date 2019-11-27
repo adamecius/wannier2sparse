@@ -36,12 +36,12 @@ model.readUnitCell(label+".uc");
 model.readWannierModel(label+"_hr.dat");    
 
 std::cout<<"Creating the supercell ("<<cellDim[0]<<","<<cellDim[1]<<","<<cellDim[2]<<")"<<std::endl;
-save_hopping_list_as_csr("HAM.CSR"  , wrap_in_supercell(cellDim, model.hl) );
-save_hopping_list_as_csr("JX.CSR"   , wrap_in_supercell(cellDim, model.createHoppingCurrents_list(0)) );
-save_hopping_list_as_csr("JYSZ.CSR" , wrap_in_supercell(cellDim, model.createHoppingSpinCurrents_list(1,'z')) );
-save_hopping_list_as_csr("SX.CSR"   , wrap_in_supercell(cellDim, model.createHoppingSpinDensity_list('x')) );
-save_hopping_list_as_csr("SY.CSR"   , wrap_in_supercell(cellDim, model.createHoppingSpinDensity_list('y')) );
-save_hopping_list_as_csr("SZ.CSR"   , wrap_in_supercell(cellDim, model.createHoppingSpinDensity_list('z')) ); 
+save_hopping_list_as_csr(label+".HAM.CSR"  , wrap_in_supercell(cellDim, model.hl) );
+save_hopping_list_as_csr(label+".VX.CSR"   , wrap_in_supercell(cellDim, model.createHoppingCurrents_list(0)) );
+save_hopping_list_as_csr(label+".VYSZ.CSR" , wrap_in_supercell(cellDim, model.createHoppingSpinCurrents_list(1,'z')) );
+save_hopping_list_as_csr(label+".SX.CSR"   , wrap_in_supercell(cellDim, model.createHoppingSpinDensity_list('x')) );
+save_hopping_list_as_csr(label+".SY.CSR"   , wrap_in_supercell(cellDim, model.createHoppingSpinDensity_list('y')) );
+save_hopping_list_as_csr(label+".SZ.CSR"   , wrap_in_supercell(cellDim, model.createHoppingSpinDensity_list('z')) ); 
 std::cout<<"Supercells created successfully"<<std::endl;
 
 cout<<"The programa finished"<<std::endl;

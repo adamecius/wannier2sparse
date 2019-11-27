@@ -71,6 +71,7 @@ class tbmodel
 
     hopping_list createHoppingCurrents_list(const int dir)
     {
+        std::cout<<"Creating the Current matrix J"<<dir<<std::endl;
         assert( dir <3 && dir >=0 ); 
         assert(volume(lat_vecs) > 0 );
         assert_equal( (int)orbPos_list.size(), hl.WannierBasisSize());
@@ -91,7 +92,7 @@ class tbmodel
                 orb_diff[i] += displ_vec[i];    //add it to the orbital_difference
 
             //Change the hopping element accordingly
-            get<1>(elem.second) *=  hopping_list::value_t( 0.0,  orb_diff[dir] );
+            get<1>(elem.second) *=  hopping_list::value_t( 0.0, -orb_diff[dir] );
         }
         return chl;
     };
