@@ -1,3 +1,0 @@
-/data/jgarcia/codes/wannier2sparse/build/CMakeFiles/CMakeTmp/CMakeFiles/edit_cache.dir
-/data/jgarcia/codes/wannier2sparse/build/CMakeFiles/CMakeTmp/CMakeFiles/rebuild_cache.dir
-/data/jgarcia/codes/wannier2sparse/build/CMakeFiles/CMakeTmp/CMakeFiles/cmTC_b798d.dir
