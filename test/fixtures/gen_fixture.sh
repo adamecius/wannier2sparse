@@ -63,7 +63,10 @@ if [ "$MODE" = "soc" ]; then
     "$PWX"  -in "$(pick "$SEED.scf"  "$SEED.scf.in")"  > scf.out
     "$PWX"  -in "$(pick "$SEED.nscf" "$SEED.nscf.in")" > nscf.out
     "$W90X" -pp "$SEED"                                            # writes SEED.nnkp
-    "$P2WX" -in "$(pick "$SEED.pw2wan" "$SEED.pw2wan.in")" > pw2wan.out  # amn/mmn/eig/spn
+    # Force a TEXT .spn (default is Fortran-unformatted binary, awkward to parse).
+    p2win="$(pick "$SEED.pw2wan" "$SEED.pw2wan.in")"
+    grep -qi spn_formatted "$p2win" || sed -i '/&inputpp/a\   spn_formatted = .true.' "$p2win"
+    "$P2WX" -in "$p2win" > pw2wan.out                              # amn/mmn/eig/spn (spn formatted)
 fi
 
 # use_ws_distance is the point of the Level-1 wsdist fixture (produces SEED_wsvec.dat)
