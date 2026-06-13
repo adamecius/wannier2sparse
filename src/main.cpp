@@ -8,6 +8,8 @@
 #include "hopping_list.hpp"
 #include "operator_algebra.hpp"
 #include "descriptor.hpp"
+#include "gauge.hpp"
+#include <set>
 
 using namespace std;
 
@@ -193,6 +195,46 @@ int main(int argc, char* argv[])
             write_descriptor(describe("spin_current", string(1, vs.first) + "S" + vs.second,
                                       "eV*Angstrom*hbar/2", "anticommutator 1/2{V,S}"),
                              prefix + "." + name + ".desc");
+    }
+
+    // Exact spin operators via the gauge transform (Plan 7). Built on the raw
+    // Wigner-Seitz R-set of H, then given the SAME wsvec correction as H (the
+    // correction is operator-agnostic) so S and H stay on one grid/gauge.
+    if (args.exact_spin)
+    {
+        const string f_spn = in_prefix + ".spn";
+        const string f_umat = in_prefix + "_u.mat";
+        if (!file_exists(f_spn) || !file_exists(f_umat))
+        {
+            cerr << args.program_name << ": error: --exact-spin requires " << f_spn
+                 << " and " << f_umat << "\n";
+            return 1;
+        }
+        gauge_data g = read_gauge(in_prefix);
+
+        hopping_list rawH = create_hopping_list(read_wannier_file(f_hr));   // raw WS R-set
+        if (g.num_wann != rawH.WannierBasisSize())
+        {
+            cerr << args.program_name << ": error: num_wann mismatch between gauge ("
+                 << g.num_wann << ") and Hamiltonian (" << rawH.WannierBasisSize() << ")\n";
+            return 1;
+        }
+        std::set<hopping_list::cellID_t> Rs;
+        for (const auto& h : rawH.hoppings) Rs.insert(get<0>(h));
+        const std::vector<hopping_list::cellID_t> Rset(Rs.begin(), Rs.end());
+
+        const char* names[3] = {"SXexact", "SYexact", "SZexact"};
+        for (int alpha = 0; alpha < 3; ++alpha)
+        {
+            hopping_list s = exact_spin_operator(g, alpha, Rset);
+            if (file_exists(f_ws)) s = apply_wsvec(s, read_wsvec(f_ws));  // same correction as H
+            cout << "Writing exact spin " << names[alpha] << " -> " << prefix << "." << names[alpha] << ".CSR\n";
+            save_supercell_as_csr(args.cellDim, s, prefix + "." + names[alpha] + ".CSR");
+            if (args.emit_descriptor)
+                write_descriptor(describe("spin", string(1, "XYZ"[alpha]), "hbar/2",
+                                          "exact gauge transform V^dag S_B V from .spn"),
+                                 prefix + "." + names[alpha] + ".desc");
+        }
     }
 
     cout << "Supercells created successfully\n";
