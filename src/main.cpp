@@ -7,6 +7,7 @@
 #include "tbmodel.hpp"
 #include "hopping_list.hpp"
 #include "operator_algebra.hpp"
+#include "descriptor.hpp"
 
 using namespace std;
 
@@ -14,6 +15,27 @@ static bool file_exists(const string& path)
 {
     ifstream f(path.c_str());
     return f.good();
+}
+
+static OperatorDescriptor describe(const string& observable, const string& component,
+                                   const string& units, const string& provenance)
+{
+    OperatorDescriptor d;
+    d.observable = observable; d.component = component;
+    d.units = units;           d.provenance = provenance;
+    return d;
+}
+
+// Metadata for a generated operator code (VX, SZ, VXSZ, ...).
+static OperatorDescriptor op_descriptor(const string& code)
+{
+    if (code.size() == 2 && code[0] == 'V')
+        return describe("velocity", string(1, code[1]), "eV*Angstrom", "H_ij * (-i) dr");
+    if (code.size() == 2 && code[0] == 'S')
+        return describe("spin", string(1, code[1]), "hbar/2", "spin labels (_s+_/_s-_)");
+    if (code.size() == 4 && code[0] == 'V' && code[2] == 'S')
+        return describe("spin_current", code.substr(1), "eV*Angstrom*hbar/2", "label-based V*S");
+    return describe("operator", code, "", "generated");
 }
 
 // Build the requested operator as a (primitive-cell) hopping_list, dispatching
@@ -101,6 +123,22 @@ int main(int argc, char* argv[])
     cout << "Writing Hamiltonian -> " << prefix << ".HAM.CSR\n";
     save_supercell_as_csr(args.cellDim, model.hl, prefix + ".HAM.CSR");
 
+    if (args.emit_descriptor)
+    {
+        OperatorDescriptor d = describe("hamiltonian", "", "eV", "wannier90 _hr.dat");
+        double emin = 0.0, emax = 0.0;
+        if (read_eig_bounds(in_prefix + ".eig", emin, emax))
+            d.provenance += "; bounds from .eig";
+        else
+        {
+            spectral_bounds(supercell_matrix(args.cellDim, model.hl), emin, emax);
+            d.provenance += "; bounds from Lanczos";
+        }
+        d.has_bounds = true; d.a = emin; d.b = emax;
+        write_descriptor(d, prefix + ".HAM.desc");
+        cout << "  spectral bounds [a,b] = [" << emin << ", " << emax << "]\n";
+    }
+
     for (const auto& op : args.operators)
     {
         hopping_list h;
@@ -111,6 +149,8 @@ int main(int argc, char* argv[])
         }
         cout << "Writing operator " << op << " -> " << prefix << "." << op << ".CSR\n";
         save_supercell_as_csr(args.cellDim, h, prefix + "." + op + ".CSR");
+        if (args.emit_descriptor)
+            write_descriptor(op_descriptor(op), prefix + "." + op + ".desc");
     }
 
     // External operators ingested verbatim from _hr.dat-format files and
@@ -121,6 +161,9 @@ int main(int argc, char* argv[])
              << " -> " << prefix << "." << nf.first << ".CSR\n";
         hopping_list h = model.readOperatorModel(nf.second);
         save_supercell_as_csr(args.cellDim, h, prefix + "." + nf.first + ".CSR");
+        if (args.emit_descriptor)
+            write_descriptor(describe("external", nf.first, "", "ingested from " + nf.second),
+                             prefix + "." + nf.first + ".desc");
     }
 
     // Derived spin currents J = 1/2{V,S}, formed by sparse matrix product on the
@@ -137,6 +180,10 @@ int main(int argc, char* argv[])
         const SparseMatrix_t V = supercell_matrix(args.cellDim, model.createHoppingCurrents_list(vdir));
         const SparseMatrix_t S = supercell_matrix(args.cellDim, model.createHoppingSpinDensity_list(sdir));
         write_csr(anticommutator(V, S), prefix + "." + name + ".CSR");
+        if (args.emit_descriptor)
+            write_descriptor(describe("spin_current", string(1, vs.first) + "S" + vs.second,
+                                      "eV*Angstrom*hbar/2", "anticommutator 1/2{V,S}"),
+                             prefix + "." + name + ".desc");
     }
 
     cout << "Supercells created successfully\n";

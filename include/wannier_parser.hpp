@@ -34,4 +34,10 @@ vector< tuple<string, array<double, 3> > > read_xyz_file(const string xyz_filena
 
 array< array<double,3> , 3 >  read_unit_cell_file(const string uc_filename);
 
+// Read a Wannier90 seedname.eig file (lines: "band_index kpt_index energy") and
+// return the spectral extremes over all entries. Returns false (leaving
+// emin/emax untouched) if the file is missing or empty. Optional convenience
+// source for the Hamiltonian spectral bounds.
+bool read_eig_bounds(const string eig_filename, double& emin, double& emax);
+
 #endif

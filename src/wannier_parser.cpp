@@ -31,6 +31,22 @@ tuple<int, vector<int>, vector<string> > read_wannier_file(const string wannier_
 return make_tuple(num_wann, ndegen, hopping_lines);
 };
 
+bool read_eig_bounds(const string eig_filename, double& emin, double& emax)
+{
+    ifstream input_file(eig_filename.c_str());
+    if (!input_file.is_open()) return false;
+
+    int ibnd, ikpt; double energy;
+    bool any = false;
+    while (input_file >> ibnd >> ikpt >> energy)
+    {
+        if (!any) { emin = emax = energy; any = true; }
+        else      { if (energy < emin) emin = energy; if (energy > emax) emax = energy; }
+    }
+    input_file.close();
+    return any;
+};
+
 vector< tuple<string, array<double, 3> > > read_xyz_file(const string xyz_filename)
 {
     typedef tuple<string, array<double, 3> > xyz_elem;

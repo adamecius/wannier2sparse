@@ -40,10 +40,14 @@ public:
     // Derived spin currents J = 1/2{V,S}: (velocity axis, spin axis), each in
     // {X,Y,Z}. Written as <prefix>.J<V>S<S>.CSR.
     std::vector<std::pair<char, char> > spin_currents;
+    // Emit a physical descriptor sidecar (.desc) next to each CSR, including
+    // spectral bounds (a,b) for the Hamiltonian.
+    bool                     emit_descriptor;
     std::string              program_name;
 
     W2SP_arguments()
-        : cellDim({{1, 1, 1}}), output_dir("."), program_name("wannier2sparse") {}
+        : cellDim({{1, 1, 1}}), output_dir("."), emit_descriptor(false),
+          program_name("wannier2sparse") {}
 
     // Resolved input file stem: <project_dir>/<seed>, where seed defaults to the
     // positional LABEL and project_dir defaults to the current directory. Input
@@ -126,6 +130,7 @@ public:
                 if (vd == '?' || sd == '?') { error("'--spin-current' axes must be X, Y or Z"); return EXIT_ERROR; }
                 spin_currents.push_back(std::make_pair(vd, sd));
             }
+            else if (a == "--bounds")              { emit_descriptor = true; }
             else if (a == "all")                   { want_all = true; }
             else if (a.size() > 1 && a[0] == '-' && !std::isdigit(static_cast<unsigned char>(a[1])))
                                                    { error("unknown option '" + a + "'"); return EXIT_ERROR; }
@@ -223,6 +228,9 @@ private:
 "                         velocity axis V and spin axis S (each X|Y|Z), formed by\n"
 "                         sparse matrix product after expansion, as\n"
 "                         <LABEL>.J<V>S<S>.CSR. Repeatable.\n"
+"      --bounds           Also write a physical descriptor (.desc) next to each\n"
+"                         CSR, including spectral bounds (a,b) for the Hamiltonian\n"
+"                         (from <seed>.eig if present, else a Lanczos estimate).\n"
 "  -h, --help             Show this help and exit.\n"
 "      --list-operators   List valid operator names and exit.\n"
 "      --version          Show version and exit.\n"
