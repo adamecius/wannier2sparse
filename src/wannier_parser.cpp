@@ -31,6 +31,36 @@ tuple<int, vector<int>, vector<string> > read_wannier_file(const string wannier_
 return make_tuple(num_wann, ndegen, hopping_lines);
 };
 
+vector<wsvec_entry> read_wsvec(const string wsvec_filename)
+{
+    vector<wsvec_entry> out;
+    ifstream input_file(wsvec_filename.c_str());
+    if (!input_file.is_open()) return out;
+
+    string line;
+    if (input_file.peek() == '#') getline(input_file, line);   // header comment
+
+    int Rx, Ry, Rz, iw, jw, nT;
+    while (input_file >> Rx >> Ry >> Rz >> iw >> jw)
+    {
+        if (!(input_file >> nT)) break;
+        wsvec_entry e;
+        e.R = {Rx, Ry, Rz};
+        e.i = iw - 1;                 // Wannier90 is 1-based; store 0-based
+        e.j = jw - 1;
+        e.T.reserve(nT);
+        for (int k = 0; k < nT; ++k)
+        {
+            int tx, ty, tz;
+            input_file >> tx >> ty >> tz;
+            e.T.push_back({tx, ty, tz});
+        }
+        out.push_back(e);
+    }
+    input_file.close();
+    return out;
+};
+
 bool read_eig_bounds(const string eig_filename, double& emin, double& emax)
 {
     ifstream input_file(eig_filename.c_str());

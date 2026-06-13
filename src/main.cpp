@@ -115,6 +115,15 @@ int main(int argc, char* argv[])
     if (file_exists(f_uc))  model.readUnitCell(f_uc);
     model.readWannierModel(f_hr);
 
+    // Optional Wigner-Seitz minimum-image correction (Plan 5): applied to every
+    // operator since it acts on the shared Hamiltonian hopping list.
+    const string f_ws = in_prefix + "_wsvec.dat";
+    if (file_exists(f_ws))
+    {
+        cout << "Applying Wigner-Seitz correction from " << f_ws << "\n";
+        model.applyWsvec(f_ws);
+    }
+
     const string prefix = args.output_dir + "/" + args.label;
 
     cout << "Creating the supercell (" << args.cellDim[0] << ","

@@ -40,4 +40,19 @@ array< array<double,3> , 3 >  read_unit_cell_file(const string uc_filename);
 // source for the Hamiltonian spectral bounds.
 bool read_eig_bounds(const string eig_filename, double& emin, double& emax);
 
+// One seedname_wsvec.dat record: for the hopping (R, i, j) the minimum-image
+// correction replaces it with T.size() copies at R + T, each carrying weight
+// 1/T.size(). Orbital indices i, j are stored 0-based.
+struct wsvec_entry
+{
+    array<int, 3>              R;
+    int                        i, j;
+    vector< array<int, 3> >    T;
+};
+
+// Parse seedname_wsvec.dat (use_ws_distance output). Format per (R,iw,jw):
+//   "Rx Ry Rz iw jw"  then  "nT"  then nT lines "Tx Ty Tz".
+// Returns empty if the file is missing.
+vector<wsvec_entry> read_wsvec(const string wsvec_filename);
+
 #endif

@@ -40,6 +40,49 @@ hopping_list create_hopping_list( tuple<int, vector<int>, vector<string> > wanni
 return hl;
 };
 
+hopping_list apply_wsvec(const hopping_list& hl, const vector<wsvec_entry>& wsvec)
+{
+    if (wsvec.empty()) return hl;   // no use_ws_distance data -> unchanged
+
+    // Lookup (R, i, j) -> list of translation shifts.
+    auto key = [](const hopping_list::cellID_t& R, int i, int j) {
+        string k;
+        for (int x : R) k += to_string(x) + " ";
+        k += to_string(i) + " " + to_string(j);
+        return k;
+    };
+    std::map<string, const vector< array<int,3> >*> lut;
+    for (const auto& e : wsvec)
+        lut[key(e.R, e.i, e.j)] = &e.T;
+
+    hopping_list out;
+    out.num_wann = hl.WannierBasisSize();
+    out.cellSizes = const_cast<hopping_list&>(hl).Bounds();
+    out.hoppings.reserve(hl.hoppings.size());
+
+    for (const auto& h : hl.hoppings)
+    {
+        const auto R    = get<0>(h);
+        const auto val  = get<1>(h);
+        const auto edge = get<2>(h);
+
+        auto it = lut.find(key(R, edge[0], edge[1]));
+        if (it == lut.end() || it->second->empty())
+        {
+            out.hoppings.push_back(h);
+            continue;
+        }
+        const auto& Ts = *it->second;
+        const double nT = static_cast<double>(Ts.size());
+        for (const auto& T : Ts)
+        {
+            const hopping_list::cellID_t Rn = { R[0]+T[0], R[1]+T[1], R[2]+T[2] };
+            out.hoppings.push_back(hopping_list::hopping_t(Rn, val / nT, edge));
+        }
+    }
+    return out;
+};
+
 hopping_list wrap_in_supercell(const hopping_list::cellID_t& cellDim,const hopping_list hl ){
 
     hopping_list sc_hl;;  //the hopping list for the supercell

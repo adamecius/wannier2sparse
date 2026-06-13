@@ -16,6 +16,7 @@
 #include<limits>
 #include<algorithm>
 #include"sparse_matrix.hpp"
+#include"wannier_parser.hpp"   // wsvec_entry (lightweight; no Eigen)
 #include <iostream>
 
 using namespace std;
@@ -193,6 +194,13 @@ struct hopping_list
  * convention to zero-based indices used internally.
  */
 hopping_list create_hopping_list( tuple<int, vector<int>, vector<string> > wannier_data  );
+
+// Apply the Wigner-Seitz minimum-image correction (use_ws_distance). Each
+// hopping (R, i, j) is replaced by its T.size() images at R + T, each weighted
+// 1/T.size(); this composes with the ndegen division already done in
+// create_hopping_list. Hoppings with no matching wsvec record, and an empty
+// wsvec, are passed through unchanged (so it is a no-op without use_ws_distance).
+hopping_list apply_wsvec(const hopping_list& hl, const vector<wsvec_entry>& wsvec);
 
 /**
  * Replicate a unit-cell hopping list over a periodic supercell.

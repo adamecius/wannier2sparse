@@ -69,6 +69,13 @@ class tbmodel
         hl = create_hopping_list(read_wannier_file(inputfile));
     };
 
+    // Apply the Wigner-Seitz minimum-image correction (use_ws_distance) to the
+    // Hamiltonian from a seedname_wsvec.dat file. No-op if the file is absent.
+    inline void applyWsvec(const string inputfile)
+    {
+        hl = apply_wsvec(hl, read_wsvec(inputfile));
+    };
+
     // Load an arbitrary operator O_ij(R) given in Wannier90 _hr.dat format as a
     // hopping_list, reusing the same parse + ndegen-normalize chain as the
     // Hamiltonian. The expansion engine is provenance-agnostic, so the result
