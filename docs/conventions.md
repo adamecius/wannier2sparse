@@ -238,3 +238,31 @@ partial d** — so Fe **deliberately hits the hybrid/incomplete-shell error path
 That is expected and correct for this cut. P8 must be validated against a
 **pure p-shell or d-shell-only** Wannier model; **"P8 done" does NOT mean "Fe
 orbital L works"** — full Fe orbital L needs the deferred hybrid handling.
+
+---
+
+## 6 — Cross-check conventions (Plan 10C)
+
+Two cross-check levels for the gauge operators (P7 spin, P8 orbital L):
+
+**Level 1 — implementation cross-check (done, self-contained).** The emitted
+`O_W(R)` must inverse-transform back to the direct `V(k)† O_B(k) V(k)` on the
+mp_grid: `O_W(k) = Σ_R (1/ndegen_R) e^{+i 2π k·R} O_W(R)` (note the `1/ndegen` on
+the *inverse* interpolation, matching §1's forward transform which has *no*
+ndegen). "Same definition, two paths" → decisive for FT-sign / gauge bugs.
+`test/spin_roundtrip_crosscheck.cpp` runs this on the Fe fixture
+(max error ≈ 2.7e-9 over the 512-point mesh; residual is the 1e-10 hopping
+threshold). Self-contained: no external package.
+
+**Level 2 — independent codebase / observable (deferred).** A second
+implementation (WannierBerri, `pip install wannierberri`) or a physical
+observable (spin-Hall σ^z_xy, orbital moment) against a published number.
+Scaffolded in `test/fixtures/wberri_reference.py` + `test/wberri_crosscheck.cpp`,
+gated by `-DW2SP_WBERRI_CHECK=ON` (label `wberri`), OFF by default. **Not run
+here** — it needs the package, fixtures regenerated to include `<seed>.chk`, and
+the exact O_W(k) export path for the installed WannierBerri version confirmed.
+
+**⚠️ WS-convention trap.** WannierBerri has its own `use_ws_distance` (TB
+convention I vs II). The cross-check must fix the **same** convention on both
+sides (matching how `<seed>_hr.dat` was built) or the `O_W(k)` differ by trivial
+phases. Verify against the installed WannierBerri version, not from memory.
