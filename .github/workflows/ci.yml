@@ -1,0 +1,71 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  build-and-test:
+    name: Build & test (Ubuntu, GCC)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Eigen3
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libeigen3-dev
+
+      # Build type Debug keeps assert() active: the unit tests assert on
+      # hopping-list equality, so NDEBUG (Release) would compile the checks out
+      # and the suite would pass vacuously.
+      - name: Configure
+        run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Debug
+
+      - name: Build
+        run: cmake --build build -j
+
+      - name: Test
+        run: ctest --test-dir build --output-on-failure
+
+  install-consumer:
+    name: Install + downstream find_package
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Eigen3
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libeigen3-dev
+
+      - name: Build and install to a prefix
+        run: |
+          cmake -S . -B build -DCMAKE_BUILD_TYPE=Debug -DW2SP_BUILD_TESTS=OFF \
+                -DCMAKE_INSTALL_PREFIX="$PWD/_install"
+          cmake --build build -j
+          cmake --install build
+
+      - name: Build a consumer project against the installed config-package
+        run: |
+          mkdir -p _consumer
+          cat > _consumer/CMakeLists.txt <<'CMAKE'
+          cmake_minimum_required(VERSION 3.14)
+          project(consumer LANGUAGES CXX)
+          find_package(wannier2sparse 1.0 CONFIG REQUIRED)
+          add_executable(app main.cpp)
+          target_link_libraries(app PRIVATE wannier2sparse::wannierlib)
+          CMAKE
+          cat > _consumer/main.cpp <<'CPP'
+          #include "hopping_list.hpp"
+          #include <Eigen/Sparse>   // must arrive transitively via Eigen3::Eigen
+          int main() {
+              hopping_list hl;
+              hl.SetWannierBasisSize(2);
+              Eigen::SparseMatrix<std::complex<double>> m(2, 2);
+              return hl.WannierBasisSize() == 2 ? 0 : 1;
+          }
+          CPP
+          cmake -S _consumer -B _consumer/build -DCMAKE_PREFIX_PATH="$PWD/_install"
+          cmake --build _consumer/build
+          ./_consumer/build/app
