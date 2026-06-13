@@ -50,10 +50,12 @@ int main()
     check_shell(2, {-2, -1, 0, 1, 2});
 
     // 2) projection parsing: pure shells accepted, everything else errors by name
+    assert((shells_of("X: s")   == vector<int>{0}));    // s -> trivial L=0 (allowed)
     assert((shells_of("X: p")   == vector<int>{1}));
     assert((shells_of("X: d")   == vector<int>{2}));
+    assert((shells_of("X: d;s;s") == vector<int>{2,0,0}));   // copper-like
     assert((shells_of("X: p;d") == vector<int>{1,2}));
-    for (const char* bad : {"X: sp3d2", "X: sp3", "X: dxy", "X: s", "X: f"})
+    for (const char* bad : {"X: sp3d2", "X: sp3", "X: dxy", "X: f"})
     {
         bool threw = false;
         try { shells_of(bad); } catch (const std::exception&) { threw = true; }

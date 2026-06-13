@@ -10,8 +10,9 @@
 
 /**
  * Real-basis orbital angular momentum Lx, Ly, Lz (units ħ) for a complete shell
- * of angular momentum l. Only l=1 (p) and l=2 (d) are supported (see
- * docs/conventions.md sec 5). Built symbolically from L± in the |l,m> basis,
+ * of angular momentum l. l=0 (s) gives the trivial L=0; l=1 (p) and l=2 (d) are
+ * the non-trivial cases (see docs/conventions.md sec 5). Built symbolically from
+ * L± in the |l,m> basis,
  * rotated to the W90 real-harmonic order via C (never transcribed); callers/tests
  * assert L=L†, [Lx,Ly]=iLz, Tr=0, eig(Lz)={-1,0,1}/{-2..2}.
  *
@@ -40,7 +41,9 @@ inline std::array<Eigen::MatrixXcd, 3> shell_L(int l)
     Eigen::MatrixXcd C = Eigen::MatrixXcd::Zero(n, n);
     const double s = 1.0 / std::sqrt(2.0);
     auto put = [&](int col, int m, cd coef) { C(m + l, col) += coef; };
-    if (l == 1) {
+    if (l == 0) {
+        return { Eigen::MatrixXcd::Zero(1,1), Eigen::MatrixXcd::Zero(1,1), Eigen::MatrixXcd::Zero(1,1) };
+    } else if (l == 1) {
         put(0, 0, cd(1,0));                       // pz = |0>
         put(1, -1, cd(s,0)); put(1, 1, cd(-s,0)); // px = (|-1> - |+1>)/√2
         put(2, -1, I*s);     put(2, 1, I*s);      // py = i(|-1> + |+1>)/√2
@@ -59,9 +62,9 @@ inline std::array<Eigen::MatrixXcd, 3> shell_L(int l)
 }
 
 // Parse a .win "begin projections ... end projections" block into the list of
-// shell angular momenta (1 for p, 2 for d), in projector-column order. Throws a
-// std::runtime_error naming the offending token on anything that is not a
-// complete pure p or d shell (hybrids, incomplete shells, s, f, ...).
+// shell angular momenta (0 for s, 1 for p, 2 for d), in projector-column order.
+// Throws a std::runtime_error naming the offending token on anything that is not
+// a complete pure s/p/d shell (hybrids, incomplete shells, f, ...).
 std::vector<int> parse_projection_shells(const std::string& winfile);
 
 #endif

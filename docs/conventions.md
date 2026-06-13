@@ -171,10 +171,12 @@ on the same atom; projecting `L` onto a hybrid basis requires choosing how the
 hybrid decomposes into pure-ℓ parts and what "orbital L" even means across an
 s/p/d mixture — a **modeling choice, not a convention** you can read off a table.
 
-Therefore this first cut supports **only a complete pure `p` shell (all of
-pz,px,py) or a complete pure `d` shell (all of dz2,dxz,dyz,dx2-y2,dxy)** per atom.
+Therefore this first cut supports a **complete pure shell**: `s` (trivially
+`L=0`), a full `p` shell (pz,px,py), or a full `d` shell
+(dz2,dxz,dyz,dx2-y2,dxy) per atom. `s` is included because ℓ=0 has a
+well-defined (zero) on-site `L`; it is the complete-shell case, not a hybrid.
 Anything else **must raise a clear error naming the offending projection**:
-- hybrids (`sp`, `sp2`, `sp3`, `sp3d`, `sp3d2`), `f`, and bare `s`;
+- hybrids (`sp`, `sp2`, `sp3`, `sp3d`, `sp3d2`) and `f`+;
 - an **incomplete** shell (e.g. only `dxy`, or `dxy;dxz;dyz`) — `L` mixes all
   members of the shell, so a partial shell cannot represent it.
 
@@ -221,9 +223,46 @@ Self-contained, decisive: `L_α = L_α†`; `[Lx,Ly] = i Lz` (catches ordering/p
 errors immediately); `Tr L_α = 0` per shell; `eig(Lz) = {−1,0,1}` (p) /
 `{−2,−1,0,1,2}` (d). Defer any external quantitative cross-check.
 
+**Physical caveat — integer eigenvalues are on `L_local`, not `L_W`.** The
+emitted `L_W(R)` is the operator *projected onto the Wannier subspace*
+(`P_W L P_W`); Wannier functions are not pure atomic harmonics, so `L_W` does
+**not** have integer eigenvalues. The integer-eigenvalue gate ({−ℓ..ℓ}) is on
+the local generator `L_local`. For `L_W` the meaningful checks are Hermiticity
+and `L_W(R)=L_W(−R)†`. Validated end-to-end on the real pure-`d` copper fixture
+(example04, `Cu:d`): `Lz_local` eigenvalues `{−2,−1,0,1,2}`, `L_W(R)=L_W(−R)†`
+to ~1e-16. Fe still hits the hybrid error (`sp3d2`), as designed.
+
 ### ⚠️ Forward note — Fe is *not* a P8 validation target
 The Fe `example17` projections are `sp3d2;dxy;dxz;dyz` — a **hybrid (`sp3d2`) plus a
 partial d** — so Fe **deliberately hits the hybrid/incomplete-shell error path**.
 That is expected and correct for this cut. P8 must be validated against a
 **pure p-shell or d-shell-only** Wannier model; **"P8 done" does NOT mean "Fe
 orbital L works"** — full Fe orbital L needs the deferred hybrid handling.
+
+---
+
+## 6 — Cross-check conventions (Plan 10C)
+
+Two cross-check levels for the gauge operators (P7 spin, P8 orbital L):
+
+**Level 1 — implementation cross-check (done, self-contained).** The emitted
+`O_W(R)` must inverse-transform back to the direct `V(k)† O_B(k) V(k)` on the
+mp_grid: `O_W(k) = Σ_R (1/ndegen_R) e^{+i 2π k·R} O_W(R)` (note the `1/ndegen` on
+the *inverse* interpolation, matching §1's forward transform which has *no*
+ndegen). "Same definition, two paths" → decisive for FT-sign / gauge bugs.
+`test/spin_roundtrip_crosscheck.cpp` runs this on the Fe fixture
+(max error ≈ 2.7e-9 over the 512-point mesh; residual is the 1e-10 hopping
+threshold). Self-contained: no external package.
+
+**Level 2 — independent codebase / observable (deferred).** A second
+implementation (WannierBerri, `pip install wannierberri`) or a physical
+observable (spin-Hall σ^z_xy, orbital moment) against a published number.
+Scaffolded in `test/fixtures/wberri_reference.py` + `test/wberri_crosscheck.cpp`,
+gated by `-DW2SP_WBERRI_CHECK=ON` (label `wberri`), OFF by default. **Not run
+here** — it needs the package, fixtures regenerated to include `<seed>.chk`, and
+the exact O_W(k) export path for the installed WannierBerri version confirmed.
+
+**⚠️ WS-convention trap.** WannierBerri has its own `use_ws_distance` (TB
+convention I vs II). The cross-check must fix the **same** convention on both
+sides (matching how `<seed>_hr.dat` was built) or the `O_W(k)` differ by trivial
+phases. Verify against the installed WannierBerri version, not from memory.
