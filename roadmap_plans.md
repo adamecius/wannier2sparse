@@ -106,15 +106,18 @@ la FT.
 
 ```text
 Fase 0 (sin W90):   P1 ndegen ──► P2 ingesta externa/TB ──► P3 J derivado ──► P4 proyecto/seedname
-                       │
-Fase A (W90 H):        ├──► P5 wsvec
-                       └──► P6 cotas (a,b) + descriptor
+                                                                                 │
+Infra de tests:                                                                  └──► P4b fixtures W90/QE en /tmp
+                                                                                          │ (datos reales para ↓)
+Fase A (W90 H):        P5 wsvec        P6 cotas (a,b) + descriptor
 Fase B (SOC):       P7 gauge + .spn → spin exacto   (requiere P1, P6 para .eig)
 Fase C:             P8 .amn + L locales → momento angular   (requiere P7: motor de gauge/FT)
 ```
 
-P1 es precondición de todo (goldens fiables). P2–P4 cierran la Fase 0. P5–P6 la
-Fase A. P7 la Fase B. P8 la Fase C. El motor de gauge+FT de P7 lo reutiliza P8.
+P1 es precondición de todo (goldens fiables). P2–P4 cierran la Fase 0. **P4b** es
+infraestructura de test (no toca el código de producción) que genera fixtures
+autoritativos de W90/QE y los consumen P5–P8. P5–P6 la Fase A. P7 la Fase B. P8 la
+Fase C. El motor de gauge+FT de P7 lo reutiliza P8.
 
 ---
 
@@ -261,6 +264,58 @@ test/project_resolution.cpp  test/CMakeLists.txt
 
 **Desbloquea**: "darle acceso a una carpeta de W90" — requisito explícito; base
 para los parsers W90 de las fases B/C.
+
+---
+
+## Plan 4b — Bootstrap local de fixtures W90+QE (desarrollo)
+
+**Funcionalidad única**: scripts locales que compilan W90 **y QE** en `/tmp` y
+corren un tutorial SOC para generar los fixtures reales que necesita el desarrollo
+de spin y operadores (`hr.dat, wsvec, centres, .eig, u.mat, .spn, .amn`). Es
+**herramienta de desarrollo local**, no el set de goldens final.
+
+**QE está en alcance desde ya**: `.spn` (spin, P7) y `.amn` desde cero (P8) lo
+exigen. Dos niveles según lo que se necesite:
+- **Nivel 1 — solo W90 (rápido, sin QE)**: tutoriales con `.amn/.mmn/.eig`
+  precomputados (gaas `tutorial01`, `tutorial37` Fe `use_ws_distance`) →
+  `hr.dat/wsvec/centres/eig`. Cubre P1, P2, P5, P6.
+- **Nivel 2 — W90 + QE (para spin/SOC)**: `pw.x` + `pw2wannier90.x` +
+  `wannier90.x` sobre un tutorial SOC → `.spn/.amn`. Cubre P7, P8.
+
+**Fixtures SOC concretos** (verificados; pseudos `.UPF` **incluidos** en
+`w90/pseudo/`, el `.scf` apunta `pseudo_dir='../../pseudo/'` → sin descarga):
+- `tutorial17` Fe (SOC, `write_spn`): el más pequeño para el operador de spin (P7).
+  `ecutwfc=120 Ry, nbnd=28`.
+- `tutorial30` GaAs (ac spin Hall): ligero (`ecutwfc=90, nbnd=26`) → validación de
+  la corriente de spin.
+- `tutorial29` Pt (spin Hall conductivity): referencia más pesada del spin Hall.
+
+**Whitelist** (scratch, no toca producción)
+```text
+test/fixtures/build_w90.sh    # cmake build serie de W90 en /tmp, cachea binario
+test/fixtures/build_qe.sh     # build serie de pw.x + pw2wannier90.x en /tmp
+test/fixtures/gen_fixture.sh  # scf→nscf→pw2wannier→wannier90 de un tutorial, recolecta
+test/fixtures/README.md       # deps apt, pasos, tutorial→fixture→plan
+```
+
+**Detalles**
+- Deps Ubuntu: nivel 1 `gfortran cmake liblapack-dev libblas-dev`; nivel 2 añade
+  `libfftw3-dev` (+ MPI si se quiere; serie basta para estas celdas).
+- `gen_fixture.sh` inyecta los flags que falten (`write_hr`, `write_xyz`) y deja la
+  salida en una carpeta seedname que P4 resuelve.
+- `/tmp` efímero → cachear binarios; recompilar tras reinicio. OK para dev local.
+- Coste: Fe/GaAs en minutos (serie); Pt algo más.
+
+**Validación**: reconstruir `H(k)=Σ_R e^{ik·R}H(R)/ndegen` desde el modelo ingerido
+y casar con `seedname_band.dat`/`.eig` de W90 (detecta errores de convención de FT
+que una regresión no vería). Para spin: hermiticidad + reglas de suma de `S_W(R)`.
+
+**Diferido (con calma, tras implementar y probar)**: set de **ejemplos curados
+propios** — celdas mínimas, versionadas como fixtures, tags fijados, integración
+ctest. Ese será el golden reproducible definitivo; este P4b es el andamiaje para
+llegar allí.
+
+**Desbloquea**: `.spn/.amn` reales en local para desarrollar P7/P8 ya.
 
 ---
 
