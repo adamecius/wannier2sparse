@@ -4,6 +4,7 @@
 #include <array>
 #include <string>
 #include <vector>
+#include <utility>
 #include <iostream>
 #include <cctype>
 
@@ -30,11 +31,41 @@ public:
     std::array<int, 3>       cellDim;
     std::string              label;
     std::string              output_dir;
+    std::string              project_dir;   // directory holding the input files (default: cwd)
+    std::string              seed;          // seedname of the input files (default: label)
     std::vector<std::string> operators;
+    // External operators to ingest from _hr.dat-format files: (NAME, PATH).
+    // Each is expanded through the same engine and written as <prefix>.NAME.CSR.
+    std::vector<std::pair<std::string, std::string> > op_files;
+    // Derived spin currents J = 1/2{V,S}: (velocity axis, spin axis), each in
+    // {X,Y,Z}. Written as <prefix>.J<V>S<S>.CSR.
+    std::vector<std::pair<char, char> > spin_currents;
+    // Emit a physical descriptor sidecar (.desc) next to each CSR, including
+    // spectral bounds (a,b) for the Hamiltonian.
+    bool                     emit_descriptor;
+    // Build the exact spin operator from .spn + _u.mat (+ _u_dis.mat) via the
+    // gauge transform, instead of the label-based spin (Plan 7).
+    bool                     exact_spin;
+    // Build orbital angular momentum L from .amn + _u.mat + .win projections via
+    // the projector route (Plan 8; pure p/d shells only).
+    bool                     orbital_l;
+    // Self-verification: "" = off; "all" or a specific check name (hermiticity,
+    // sum_rules, algebra, aliasing, bounds). Writes <op>.check sidecars (Plan 10A).
+    std::string              check;
     std::string              program_name;
 
     W2SP_arguments()
-        : cellDim({{1, 1, 1}}), output_dir("."), program_name("wannier2sparse") {}
+        : cellDim({{1, 1, 1}}), output_dir("."), emit_descriptor(false),
+          exact_spin(false), orbital_l(false), program_name("wannier2sparse") {}
+
+    // Resolved input file stem: <project_dir>/<seed>, where seed defaults to the
+    // positional LABEL and project_dir defaults to the current directory. Input
+    // files are <prefix>_hr.dat, <prefix>.uc, <prefix>.xyz.
+    std::string input_prefix() const
+    {
+        const std::string base = seed.empty() ? label : seed;
+        return project_dir.empty() ? base : (project_dir + "/" + base);
+    }
 
     // The operators this tool knows how to build (HAM is always written and is
     // not part of this list).
@@ -57,6 +88,14 @@ public:
         return false;
     }
 
+    // Normalize a single-letter cartesian axis to upper case, or '?' if invalid.
+    static char to_axis(const std::string& s)
+    {
+        if (s.size() != 1) return '?';
+        const char c = static_cast<char>(std::toupper(static_cast<unsigned char>(s[0])));
+        return (c == 'X' || c == 'Y' || c == 'Z') ? c : '?';
+    }
+
     Status parse(int argc, char* argv[])
     {
         if (argc > 0) program_name = argv[0];
@@ -74,6 +113,45 @@ public:
             {
                 if (i + 1 >= argc) { error("missing directory after '" + a + "'"); return EXIT_ERROR; }
                 output_dir = argv[++i];
+            }
+            else if (a == "-p" || a == "--project")
+            {
+                if (i + 1 >= argc) { error("missing directory after '" + a + "'"); return EXIT_ERROR; }
+                project_dir = argv[++i];
+            }
+            else if (a == "--seed")
+            {
+                if (i + 1 >= argc) { error("missing name after '--seed'"); return EXIT_ERROR; }
+                seed = argv[++i];
+            }
+            else if (a == "--op-file")
+            {
+                if (i + 2 >= argc) { error("'--op-file' needs NAME and PATH"); return EXIT_ERROR; }
+                const std::string nm = argv[++i];
+                const std::string pth = argv[++i];
+                op_files.push_back(std::make_pair(nm, pth));
+            }
+            else if (a == "--spin-current")
+            {
+                if (i + 2 >= argc) { error("'--spin-current' needs a velocity axis and a spin axis (X|Y|Z)"); return EXIT_ERROR; }
+                const char vd = to_axis(argv[++i]);
+                const char sd = to_axis(argv[++i]);
+                if (vd == '?' || sd == '?') { error("'--spin-current' axes must be X, Y or Z"); return EXIT_ERROR; }
+                spin_currents.push_back(std::make_pair(vd, sd));
+            }
+            else if (a == "--bounds")              { emit_descriptor = true; }
+            else if (a == "--exact-spin")          { exact_spin = true; }
+            else if (a == "--orbital-l" || a == "--orbital-L") { orbital_l = true; }
+            else if (a == "--check")
+            {
+                // optional selector; default "all"
+                static const char* known[] = {"all","hermiticity","sum_rules","algebra","aliasing","bounds"};
+                check = "all";
+                if (i + 1 < argc)
+                {
+                    const std::string nxt = argv[i+1];
+                    for (const char* kw : known) if (nxt == kw) { check = nxt; ++i; break; }
+                }
             }
             else if (a == "all")                   { want_all = true; }
             else if (a.size() > 1 && a[0] == '-' && !std::isdigit(static_cast<unsigned char>(a[1])))
@@ -161,9 +239,36 @@ private:
 "\n"
 "OPTIONS\n"
 "  -o, --output-dir DIR   Directory for the .CSR files (default: current dir).\n"
+"  -p, --project DIR      Directory holding the input files (default: current dir).\n"
+"      --seed NAME        Seedname of the input files (default: LABEL). Inputs are\n"
+"                         <DIR>/<NAME>_hr.dat, <DIR>/<NAME>.uc, <DIR>/<NAME>.xyz.\n"
+"      --op-file NAME PATH Ingest an external operator in _hr.dat format from\n"
+"                         PATH and write it as <LABEL>.NAME.CSR. Repeatable.\n"
+"                         Enables hand-built tight-binding models and operators\n"
+"                         produced outside this tool.\n"
+"      --spin-current V S Write the derived spin current J = 1/2(V*S + S*V) for\n"
+"                         velocity axis V and spin axis S (each X|Y|Z), formed by\n"
+"                         sparse matrix product after expansion, as\n"
+"                         <LABEL>.J<V>S<S>.CSR. Repeatable.\n"
+"      --bounds           Also write a physical descriptor (.desc) next to each\n"
+"                         CSR, including spectral bounds (a,b) for the Hamiltonian\n"
+"                         (from <seed>.eig if present, else a Lanczos estimate).\n"
+"      --exact-spin       Build the exact spin operators SXexact/SYexact/SZexact\n"
+"                         from <seed>.spn + <seed>_u.mat (+ _u_dis.mat) via the\n"
+"                         gauge transform (units hbar/2). Requires those files.\n"
+"      --orbital-L        Build orbital angular momentum LX/LY/LZ from <seed>.amn\n"
+"                         + <seed>_u.mat + <seed>.win projections (units hbar).\n"
+"                         Pure p/d shells only; errors on hybrids (e.g. sp3d2).\n"
+"      --check [NAME]     Self-verify each operator (hermiticity, sum_rules,\n"
+"                         algebra, aliasing, bounds) -> <op>.check sidecars.\n"
+"                         NAME selects one check; default is all. CSR unchanged.\n"
 "  -h, --help             Show this help and exit.\n"
 "      --list-operators   List valid operator names and exit.\n"
 "      --version          Show version and exit.\n"
+"\n"
+"NOTE\n"
+"  LABEL.uc and LABEL.xyz are only required when a velocity/spin operator is\n"
+"  requested; a Hamiltonian (or an --op-file operator) needs only its _hr.dat.\n"
 "\n"
 "OUTPUT\n"
 "  LABEL.HAM.CSR and one LABEL.<OP>.CSR per requested operator.\n"

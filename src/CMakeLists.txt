@@ -6,6 +6,11 @@ set(PUBLIC_HEADERS
     ${PROJECT_SOURCE_DIR}/include/wannier_parser.hpp
     ${PROJECT_SOURCE_DIR}/include/hopping_list.hpp
     ${PROJECT_SOURCE_DIR}/include/sparse_matrix.hpp
+    ${PROJECT_SOURCE_DIR}/include/operator_algebra.hpp
+    ${PROJECT_SOURCE_DIR}/include/descriptor.hpp
+    ${PROJECT_SOURCE_DIR}/include/gauge.hpp
+    ${PROJECT_SOURCE_DIR}/include/local_operators.hpp
+    ${PROJECT_SOURCE_DIR}/include/checks.hpp
     ${PROJECT_SOURCE_DIR}/include/tbmodel.hpp
     ${PROJECT_SOURCE_DIR}/include/w2sp_arguments.hpp
 )
@@ -13,6 +18,7 @@ set(PUBLIC_HEADERS
 add_library(${LIBRARY_NAME} STATIC
     wannier_parser.cpp
     hopping_list.cpp
+    gauge.cpp
 )
 add_library(wannier2sparse::wannierlib ALIAS ${LIBRARY_NAME})
 

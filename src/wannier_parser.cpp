@@ -1,44 +1,80 @@
 #include "wannier_parser.hpp"
 
-tuple<int, vector<string> > read_wannier_file(const string wannier_filename)
+tuple<int, vector<int>, vector<string> > read_wannier_file(const string wannier_filename)
 {
-    int num_wann = 0;   // the number of Wannier functions
-    int nrpts = 0;      //number of Wigner-Seitz grid-points
-    vector< string > wz_gpoints; 
-    vector< string > hopping_list; 
-
-    ifstream input_file(wannier_filename.c_str()); 
+    ifstream input_file(wannier_filename.c_str());
     assert(input_file.is_open());
     input_file.precision( numeric_limits<double>::digits10+2);
 
-    string line; 
-    for( int counter = 0; getline(input_file, line); counter++){
-        switch( counter ){
-            case 0 : continue;  //ignore data or comments
-            
-            case 1 : num_wann = safe_stoi(line  ); assert(num_wann>0); continue;
-            
-            case 2 : nrpts = safe_stoi(line); assert(nrpts>0); continue;
-            
-            case 3 :{   //Read all Wigner-Seitz grid-points
-                const int nrpts_lines = nrpts/15;   //the format impose 15 grid-points per line.  
-                wz_gpoints.push_back(line);         //Note the first line is always read so we are always reading nrpts_lines+1
-                for(int n=0; n < nrpts_lines ; n++)
-                {
-                    getline(input_file, line);
-                    wz_gpoints.push_back(line);
-                    counter++;
-                }
-               continue;
-            }
-            default:
-                hopping_list.push_back( line );
+    string line;
+    getline(input_file, line);                                 // line 0: comment / date
+    getline(input_file, line); const int num_wann = safe_stoi(line); assert(num_wann>0);
+    getline(input_file, line); const int nrpts    = safe_stoi(line); assert(nrpts>0);
+
+    // Wigner-Seitz degeneracies: nrpts integers, 15 per line. Read token by
+    // token until exactly nrpts are collected. This is robust to the case where
+    // nrpts is a multiple of 15: a line-based count (nrpts/15 + 1) would consume
+    // an extra line and eat the first hopping, desynchronizing everything.
+    vector<int> ndegen; ndegen.reserve(nrpts);
+    int deg;
+    while( (int)ndegen.size() < nrpts && (input_file >> deg) )
+        ndegen.push_back(deg);
+    assert( (int)ndegen.size() == nrpts );
+    getline(input_file, line);                                 // consume rest of the last degeneracy line
+
+    vector< string > hopping_lines;
+    while( getline(input_file, line) )
+        hopping_lines.push_back(line);
+
+    input_file.close();
+
+return make_tuple(num_wann, ndegen, hopping_lines);
+};
+
+vector<wsvec_entry> read_wsvec(const string wsvec_filename)
+{
+    vector<wsvec_entry> out;
+    ifstream input_file(wsvec_filename.c_str());
+    if (!input_file.is_open()) return out;
+
+    string line;
+    if (input_file.peek() == '#') getline(input_file, line);   // header comment
+
+    int Rx, Ry, Rz, iw, jw, nT;
+    while (input_file >> Rx >> Ry >> Rz >> iw >> jw)
+    {
+        if (!(input_file >> nT)) break;
+        wsvec_entry e;
+        e.R = {Rx, Ry, Rz};
+        e.i = iw - 1;                 // Wannier90 is 1-based; store 0-based
+        e.j = jw - 1;
+        e.T.reserve(nT);
+        for (int k = 0; k < nT; ++k)
+        {
+            int tx, ty, tz;
+            input_file >> tx >> ty >> tz;
+            e.T.push_back({tx, ty, tz});
         }
+        out.push_back(e);
     }
-    input_file.close();        
+    input_file.close();
+    return out;
+};
 
+bool read_eig_bounds(const string eig_filename, double& emin, double& emax)
+{
+    ifstream input_file(eig_filename.c_str());
+    if (!input_file.is_open()) return false;
 
-return tuple<int, vector<string> >(num_wann,hopping_list); 
+    int ibnd, ikpt; double energy;
+    bool any = false;
+    while (input_file >> ibnd >> ikpt >> energy)
+    {
+        if (!any) { emin = emax = energy; any = true; }
+        else      { if (energy < emin) emin = energy; if (energy > emax) emax = energy; }
+    }
+    input_file.close();
+    return any;
 };
 
 vector< tuple<string, array<double, 3> > > read_xyz_file(const string xyz_filename)

@@ -1,10 +1,49 @@
 #include "hopping_list.hpp"
+#include <stdexcept>
 
-hopping_list create_hopping_list( tuple<int, vector<string> > wannier_data  )
+void guard_minimum_image(const hopping_list& hl, const hopping_list::cellID_t& cellDim)
+{
+    const auto collisions = aliasing_collisions(hl, cellDim);
+    if (collisions.empty()) return;                       // safe
+
+    // Range per axis, to report the minimum safe N (= 2*range + 1).
+    hopping_list::cellID_t rng = {0, 0, 0};
+    for (const auto& h : hl.hoppings)
+    {
+        const auto R = std::get<0>(h);
+        for (int d = 0; d < 3; ++d) { const int a = R[d] < 0 ? -R[d] : R[d]; if (a > rng[d]) rng[d] = a; }
+    }
+    for (int d = 0; d < 3; ++d)
+    {
+        if (cellDim[d] >= 2*rng[d] + 1) continue;
+        std::ostringstream msg;
+        msg << "supercell N=" << cellDim[d] << " along axis " << d
+            << " is too small for hopping range " << rng[d] << ". Distinct R alias onto the "
+            << "same bond under periodic wrapping (minimum image requires N >= 2*range+1 = "
+            << (2*rng[d] + 1) << "), which would corrupt the operator. Example: " << collisions.front()
+            << ". Enlarge to >=" << (2*rng[d] + 1)
+            << ", or this axis needs k-point (Bloch) sampling, which wannier2sparse does not do by design.";
+        throw std::runtime_error(msg.str());
+    }
+    // collisions present but every axis nominally large enough (asymmetric range)
+    throw std::runtime_error("minimum-image aliasing under periodic wrapping: " + collisions.front());
+}
+
+hopping_list create_hopping_list( tuple<int, vector<int>, vector<string> > wannier_data  )
 {
     hopping_list hl;
-    hl.num_wann= get<0>(wannier_data); //number of wannier functions
-    const vector<string> hopping_lines= get<1>(wannier_data); //strings containing the hopping data
+    const int num_wann = get<0>(wannier_data);
+    hl.num_wann = num_wann;                                  //number of wannier functions
+    const vector<int>&    ndegen        = get<1>(wannier_data); //WS degeneracy per R block
+    const vector<string>& hopping_lines = get<2>(wannier_data); //strings with the hopping data
+
+    // Hoppings arrive in blocks of num_wann^2 lines, one block per Wigner-Seitz
+    // point, in the same order as ndegen. Each value is divided by its block's
+    // degeneracy (the standard W90 ndegen normalization; a no-op when all are 1).
+    // The block index is computed from the RAW line ordinal so the near-zero
+    // filter below cannot desynchronize the counter.
+    const long block_size = (long)num_wann * num_wann;
+    long raw = 0;
     for (auto line : hopping_lines){
         stringstream ss(line);
         ss.precision( numeric_limits<double>::digits10+2);
@@ -19,10 +58,58 @@ hopping_list create_hopping_list( tuple<int, vector<string> > wannier_data  )
         double re,im; ss>>re>>im;
         hopping_list::value_t hop_value(re,im);
 
+        const long block = (block_size > 0) ? raw / block_size : 0;
+        if( block < (long)ndegen.size() && ndegen[block] > 0 )
+            hop_value /= (double)ndegen[block];
+        ++raw;
+
         if( sqrt( norm(hop_value) )> numeric_limits<double>::epsilon() )
             hl.hoppings.push_back(hopping_list::hopping_t(cellID,hop_value,vertex_edge));
     }
 return hl;
+};
+
+hopping_list apply_wsvec(const hopping_list& hl, const vector<wsvec_entry>& wsvec)
+{
+    if (wsvec.empty()) return hl;   // no use_ws_distance data -> unchanged
+
+    // Lookup (R, i, j) -> list of translation shifts.
+    auto key = [](const hopping_list::cellID_t& R, int i, int j) {
+        string k;
+        for (int x : R) k += to_string(x) + " ";
+        k += to_string(i) + " " + to_string(j);
+        return k;
+    };
+    std::map<string, const vector< array<int,3> >*> lut;
+    for (const auto& e : wsvec)
+        lut[key(e.R, e.i, e.j)] = &e.T;
+
+    hopping_list out;
+    out.num_wann = hl.WannierBasisSize();
+    out.cellSizes = const_cast<hopping_list&>(hl).Bounds();
+    out.hoppings.reserve(hl.hoppings.size());
+
+    for (const auto& h : hl.hoppings)
+    {
+        const auto R    = get<0>(h);
+        const auto val  = get<1>(h);
+        const auto edge = get<2>(h);
+
+        auto it = lut.find(key(R, edge[0], edge[1]));
+        if (it == lut.end() || it->second->empty())
+        {
+            out.hoppings.push_back(h);
+            continue;
+        }
+        const auto& Ts = *it->second;
+        const double nT = static_cast<double>(Ts.size());
+        for (const auto& T : Ts)
+        {
+            const hopping_list::cellID_t Rn = { R[0]+T[0], R[1]+T[1], R[2]+T[2] };
+            out.hoppings.push_back(hopping_list::hopping_t(Rn, val / nT, edge));
+        }
+    }
+    return out;
 };
 
 hopping_list wrap_in_supercell(const hopping_list::cellID_t& cellDim,const hopping_list hl ){
@@ -147,6 +234,52 @@ void save_supercell_as_csr(const hopping_list::cellID_t& cellDim,
     matrix_file<<std::endl;
     for(size_t r=0;r<=dim;++r) matrix_file<<rp[r]<<" ";
     matrix_file<<std::endl;
+    matrix_file.close();
+return ;
+}
+
+
+SparseMatrix_t supercell_matrix(const hopping_list::cellID_t& cellDim,
+                                const hopping_list& hl)
+{
+    const hopping_list sc = wrap_in_supercell(cellDim, hl);
+    const size_t dim = sc.WannierBasisSize();
+
+    std::vector<Triplet_t> coefficients;
+    coefficients.reserve( sc.hoppings.size() );
+    for (auto const& hop : sc.hoppings)
+    {
+        const auto edge = get<2>(hop);
+        coefficients.push_back( Triplet_t(edge[0], edge[1], get<1>(hop)) );
+    }
+    SparseMatrix_t m(dim, dim);
+    m.setFromTriplets(coefficients.begin(), coefficients.end());
+    m.makeCompressed();
+    return m;
+}
+
+
+void write_csr(const SparseMatrix_t& output, string output_filename)
+{
+    const long dim = output.rows();
+
+    std::ofstream matrix_file ( output_filename.c_str() );
+    matrix_file<<dim<<" "<<output.nonZeros()<<std::endl;
+
+    for (int k=0; k<output.outerSize(); ++k)
+    for (SparseMatrix_t::InnerIterator it(output,k); it; ++it)
+        matrix_file<<it.value().real()<<" "<<it.value().imag()<<" ";
+    matrix_file<<std::endl;
+
+    for (int k=0; k<output.outerSize(); ++k)
+    for (SparseMatrix_t::InnerIterator it(output,k); it; ++it)
+        matrix_file<<it.index()<<" ";
+    matrix_file<<std::endl;
+
+    for (int k=0; k<output.outerSize()+1; ++k)
+        matrix_file<<*( output.outerIndexPtr() + k ) <<" ";
+    matrix_file<<std::endl;
+
     matrix_file.close();
 return ;
 }
