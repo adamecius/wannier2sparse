@@ -203,6 +203,20 @@ hopping_list create_hopping_list( tuple<int, vector<string> > wannier_data  );
 hopping_list wrap_in_supercell(const hopping_list::cellID_t& cellDim,const hopping_list hl);
 
 /**
+ * Fused single-pass supercell expansion + CSR export.
+ *
+ * Replicates and PBC-wraps the primitive-cell hoppings straight into flat
+ * (row,col,value) triplets and writes the CSR file, without ever materialising
+ * the intermediate supercell hopping_list.  Triplets are emitted in the same
+ * loop order as wrap_in_supercell, so setFromTriplets combines duplicate edges
+ * in the same order: the output is byte-identical to the two-stage
+ * save_hopping_list_as_csr(output, wrap_in_supercell(cellDim, hl)), while
+ * avoiding the extra full-supercell array.  This is the production export path.
+ */
+void save_supercell_as_csr(const hopping_list::cellID_t& cellDim,
+                           const hopping_list& hl, string output_filename);
+
+/**
  * Build the legacy textual tag for a hopping.
  *
  * This is retained for tests and diagnostics. It is not used as the primary

@@ -72,3 +72,71 @@ hopping_list wrap_in_supercell(const hopping_list::cellID_t& cellDim,const hoppi
     sc_hl.SetBounds(hopping_list::cellID_t({1,1,1})); //The wrapped cell is bounded in itself
 return sc_hl;
 };
+
+
+void save_supercell_as_csr(const hopping_list::cellID_t& cellDim,
+                           const hopping_list& hl, string output_filename)
+{
+    const int    WBB  = hl.WannierBasisSize();
+    const long   Ntot = (long)cellDim[0]*cellDim[1]*cellDim[2];
+    const size_t dim  = (size_t)WBB * Ntot;
+
+    SparseMatrix_t output(dim,dim);
+    std::vector<Triplet_t> coefficients;
+    coefficients.reserve( hl.hoppings.size() * Ntot );
+
+    // Same replication/wrapping as wrap_in_supercell, in the same loop order, so
+    // that duplicate edges are summed by setFromTriplets in the same order --
+    // but emitted straight into triplets, skipping the intermediate supercell
+    // hopping_list.
+    hopping_list::cellID_t cellShift;
+    for(cellShift[2]=0; cellShift[2]< cellDim[2]; cellShift[2]++)
+    for(cellShift[1]=0; cellShift[1]< cellDim[1]; cellShift[1]++)
+    for(cellShift[0]=0; cellShift[0]< cellDim[0]; cellShift[0]++)
+    {
+        for (auto const& hop : hl.hoppings){
+            auto cellID = get<0>(hop);
+            const auto value = get<1>(hop);
+            auto edge   = get<2>(hop);
+
+            std::transform( cellID.begin(),cellID.end(),cellShift.begin(),cellID.begin(), std::plus<int>() );
+            for( size_t i=0; i < cellID.size(); i++)
+                cellID[i]=( cellID[i]+cellDim[i] )%cellDim[i];
+
+            const int row = edge[0] + index_aliasing(cellShift,cellDim)*WBB;
+            const int col = edge[1] + index_aliasing(cellID,   cellDim)*WBB;
+
+            assert( row < (int)dim );
+            assert( col < (int)dim );
+            coefficients.push_back( Triplet_t(row,col,value) );
+        }
+    }
+    output.setFromTriplets(coefficients.begin(), coefficients.end());
+    output.makeCompressed();
+
+	std::ofstream matrix_file ( output_filename.c_str()) ;
+
+	//READ DIMENSION OF THE MATRIX
+	matrix_file<<dim<<" "<<output.nonZeros()<<std::endl;
+
+    //save values first
+    for (int k=0; k<output.outerSize(); ++k)
+    for (SparseMatrix_t::InnerIterator it(output,k); it; ++it)
+        matrix_file<<it.value().real()<<" "<<it.value().imag()<<" ";
+    matrix_file<<std::endl;
+
+    //save the columns
+    for (int k=0; k<output.outerSize(); ++k)
+    for (SparseMatrix_t::InnerIterator it(output,k); it; ++it)
+        matrix_file<<it.index()<<" ";
+    matrix_file<<std::endl;
+
+    //save the indices to columns
+    for (int k=0; k<output.outerSize()+1; ++k)
+        matrix_file<<*( output.outerIndexPtr() + k ) <<" ";
+    matrix_file<<std::endl;
+
+    matrix_file.close();
+
+return ;
+};

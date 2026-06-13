@@ -1,0 +1,15 @@
+@PACKAGE_INIT@
+
+include(CMakeFindDependencyMacro)
+
+# When wannier2sparse was built against an Eigen3 that provided its own CMake
+# config, re-find it so the Eigen3::Eigen include directories reach consumers.
+# (If Eigen was located through the manual -DEIGEN_DIR fallback at build time,
+# this is skipped and the consumer must supply Eigen themselves.)
+if(@W2SP_EIGEN_FROM_CONFIG@)
+    find_dependency(Eigen3 3.3 NO_MODULE)
+endif()
+
+include("${CMAKE_CURRENT_LIST_DIR}/wannier2sparseTargets.cmake")
+
+check_required_components(wannier2sparse)
