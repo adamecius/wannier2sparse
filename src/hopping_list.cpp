@@ -8,22 +8,22 @@ hopping_list create_hopping_list( tuple<int, vector<string> > wannier_data  )
     for (auto line : hopping_lines){
         stringstream ss(line);
         ss.precision( numeric_limits<double>::digits10+2);
-       
-        hopping_list::cellID_t cellID; 
+
+        hopping_list::cellID_t cellID;
         for( auto& x : cellID)
             ss>>x;
 
-        hopping_list::edge_t vertex_edge; 
-        for( auto& x : vertex_edge){ ss>>x; x-=1; }//The input is assumed to be zero based        
-        
-        double re,im; ss>>re>>im; 
+        hopping_list::edge_t vertex_edge;
+        for( auto& x : vertex_edge){ ss>>x; x-=1; }//The input is assumed to be zero based
+
+        double re,im; ss>>re>>im;
         hopping_list::value_t hop_value(re,im);
 
         if( sqrt( norm(hop_value) )> numeric_limits<double>::epsilon() )
-            hl.hoppings.insert( {get_tag(cellID,vertex_edge), hopping_list::hopping_t(cellID,hop_value,vertex_edge) } );
+            hl.hoppings.push_back(hopping_list::hopping_t(cellID,hop_value,vertex_edge));
     }
-return hl; 
-};   
+return hl;
+};
 
 hopping_list wrap_in_supercell(const hopping_list::cellID_t& cellDim,const hopping_list hl ){
 
@@ -31,18 +31,19 @@ hopping_list wrap_in_supercell(const hopping_list::cellID_t& cellDim,const hoppi
     sc_hl.SetWannierBasisSize(hl.WannierBasisSize()); //increase the supercell dimension;
     sc_hl.SetBounds(cellDim); //increase the supercell dimension;
 
-    //REPLICATE THESE HOPPINGS IN THE SUPERCELL
-    hopping_list::cellID_t cellShift; 
+    // Replicate the known Wannier connectivity into every translated cell.
+    // The input already contains the neighbor graph, so the hot path should
+    // only do integer wrapping and append generated hoppings.
+    hopping_list::cellID_t cellShift;
+    sc_hl.hoppings.reserve(hl.hoppings.size()*cellDim[0]*cellDim[1]*cellDim[2]);
     for(cellShift[2]=0; cellShift[2]< cellDim[2]; cellShift[2]++)
     for(cellShift[1]=0; cellShift[1]< cellDim[1]; cellShift[1]++)
     for(cellShift[0]=0; cellShift[0]< cellDim[0]; cellShift[0]++)
     {
-        //Go through all the hopping list defined in the unit cell 
+        //Go through all the hopping list defined in the unit cell
         //map the cell indexes into the new dimensions of the super cell
         //and add the values when it correspond
-        for (auto const& key_hop : hl.hoppings){
-            const auto hop = key_hop.second;
-
+        for (auto const& hop : hl.hoppings){
             auto cellID = get<0>(hop);
             auto value  = get<1>(hop);
             auto edge   = get<2>(hop);
@@ -51,7 +52,7 @@ hopping_list wrap_in_supercell(const hopping_list::cellID_t& cellDim,const hoppi
             //cellID = cellID + cellShift ;
             std::transform( cellID.begin(),cellID.end(),cellShift.begin(),cellID.begin(),  std::plus<int>() );
 
-            //wrap tag_indexes around the super_cell 
+            //wrap tag_indexes around the super_cell
             for( size_t i=0; i < cellID.size(); i++)
                 cellID[i]=( cellID[i]+cellDim[i])%cellDim[i];
 
@@ -60,18 +61,14 @@ hopping_list wrap_in_supercell(const hopping_list::cellID_t& cellDim,const hoppi
             edge[1] += index_aliasing(cellID,cellDim)*hl.WannierBasisSize(); //This is originally shidted by cellID and one added an aditional shift by cellShift.
             cellID = {0,0,0}; //After wrapping, all atoms belong to the supercell, therefore, cellID is always zero.
 
-            //Insert the hoppinhs
+            // Append the hopping. If several unit-cell hoppings wrap onto the
+            // same supercell edge, Eigen will combine them in setFromTriplets.
             assert( edge[0]< sc_hl.WannierBasisSize() );
             assert( edge[1]< sc_hl.WannierBasisSize() );
             assert( cellID== hopping_list::cellID_t({0,0,0}) );
-            string cellID_tag = get_tag(cellID,edge);
-
-            if (sc_hl.hoppings.count(cellID_tag) ==  0)
-                sc_hl.hoppings.insert( { cellID_tag, hopping_list::hopping_t(cellID,value,edge) } );
-            else
-                get<1>(sc_hl.hoppings[cellID_tag]) += value; 
+            sc_hl.hoppings.push_back(hopping_list::hopping_t(cellID,value,edge));
         }
     }
     sc_hl.SetBounds(hopping_list::cellID_t({1,1,1})); //The wrapped cell is bounded in itself
-return sc_hl; 
+return sc_hl;
 };
