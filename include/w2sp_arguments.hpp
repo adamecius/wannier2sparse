@@ -46,11 +46,14 @@ public:
     // Build the exact spin operator from .spn + _u.mat (+ _u_dis.mat) via the
     // gauge transform, instead of the label-based spin (Plan 7).
     bool                     exact_spin;
+    // Build orbital angular momentum L from .amn + _u.mat + .win projections via
+    // the projector route (Plan 8; pure p/d shells only).
+    bool                     orbital_l;
     std::string              program_name;
 
     W2SP_arguments()
         : cellDim({{1, 1, 1}}), output_dir("."), emit_descriptor(false),
-          exact_spin(false), program_name("wannier2sparse") {}
+          exact_spin(false), orbital_l(false), program_name("wannier2sparse") {}
 
     // Resolved input file stem: <project_dir>/<seed>, where seed defaults to the
     // positional LABEL and project_dir defaults to the current directory. Input
@@ -135,6 +138,7 @@ public:
             }
             else if (a == "--bounds")              { emit_descriptor = true; }
             else if (a == "--exact-spin")          { exact_spin = true; }
+            else if (a == "--orbital-l" || a == "--orbital-L") { orbital_l = true; }
             else if (a == "all")                   { want_all = true; }
             else if (a.size() > 1 && a[0] == '-' && !std::isdigit(static_cast<unsigned char>(a[1])))
                                                    { error("unknown option '" + a + "'"); return EXIT_ERROR; }
@@ -238,6 +242,9 @@ private:
 "      --exact-spin       Build the exact spin operators SXexact/SYexact/SZexact\n"
 "                         from <seed>.spn + <seed>_u.mat (+ _u_dis.mat) via the\n"
 "                         gauge transform (units hbar/2). Requires those files.\n"
+"      --orbital-L        Build orbital angular momentum LX/LY/LZ from <seed>.amn\n"
+"                         + <seed>_u.mat + <seed>.win projections (units hbar).\n"
+"                         Pure p/d shells only; errors on hybrids (e.g. sp3d2).\n"
 "  -h, --help             Show this help and exit.\n"
 "      --list-operators   List valid operator names and exit.\n"
 "      --version          Show version and exit.\n"

@@ -9,7 +9,9 @@
 #include "operator_algebra.hpp"
 #include "descriptor.hpp"
 #include "gauge.hpp"
+#include "local_operators.hpp"
 #include <set>
+#include <stdexcept>
 
 using namespace std;
 
@@ -234,6 +236,50 @@ int main(int argc, char* argv[])
                 write_descriptor(describe("spin", string(1, "XYZ"[alpha]), "hbar/2",
                                           "exact gauge transform V^dag S_B V from .spn"),
                                  prefix + "." + names[alpha] + ".desc");
+        }
+    }
+
+    // Orbital angular momentum via the projector route (Plan 8). Pure p/d shells
+    // only; hybrids (e.g. Fe's sp3d2) raise a clear error.
+    if (args.orbital_l)
+    {
+        const string f_amn = in_prefix + ".amn";
+        const string f_win = in_prefix + ".win";
+        const string f_umat = in_prefix + "_u.mat";
+        if (!file_exists(f_amn) || !file_exists(f_umat) || !file_exists(f_win))
+        {
+            cerr << args.program_name << ": error: --orbital-L requires " << f_amn
+                 << ", " << f_umat << " and " << f_win << "\n";
+            return 1;
+        }
+        try
+        {
+            const std::vector<int> shells = parse_projection_shells(f_win);
+            gauge_data g = read_gauge(in_prefix);
+            amn_data   A = read_amn(f_amn);
+
+            hopping_list rawH = create_hopping_list(read_wannier_file(f_hr));
+            std::set<hopping_list::cellID_t> Rs;
+            for (const auto& h : rawH.hoppings) Rs.insert(get<0>(h));
+            const std::vector<hopping_list::cellID_t> Rset(Rs.begin(), Rs.end());
+
+            const char* names[3] = {"LX", "LY", "LZ"};
+            for (int alpha = 0; alpha < 3; ++alpha)
+            {
+                hopping_list L = orbital_L_operator(g, A, shells, alpha, Rset);
+                if (file_exists(f_ws)) L = apply_wsvec(L, read_wsvec(f_ws));
+                cout << "Writing orbital L " << names[alpha] << " -> " << prefix << "." << names[alpha] << ".CSR\n";
+                save_supercell_as_csr(args.cellDim, L, prefix + "." + names[alpha] + ".CSR");
+                if (args.emit_descriptor)
+                    write_descriptor(describe("orbital_L", string(1, "XYZ"[alpha]), "hbar",
+                                              "projector route C=A^dag V, C^dag L_local C"),
+                                     prefix + "." + names[alpha] + ".CSR.desc");
+            }
+        }
+        catch (const std::exception& e)
+        {
+            cerr << args.program_name << ": error: " << e.what() << "\n";
+            return 1;
         }
     }
 

@@ -41,4 +41,22 @@ gauge_data read_gauge(const std::string& prefix);
 hopping_list exact_spin_operator(const gauge_data& g, int alpha,
                                  const std::vector<hopping_list::cellID_t>& Rset);
 
+// Projection overlaps A_{m,alpha}(k) from a .amn file: per k a num_bands x
+// num_proj matrix (docs/conventions.md sec 5 / additional).
+struct amn_data
+{
+    int num_bands = 0, num_proj = 0, num_kpts = 0;
+    std::vector< Eigen::MatrixXcd > A;          // per k: num_bands x num_proj
+};
+amn_data read_amn(const std::string& amn_file);
+
+// Orbital angular momentum L_alpha(R) via the projector route (Plan 8):
+//   C(k) = A(k)^dagger V(k),  L_W(k) = C(k)^dagger L_local^alpha C(k),
+//   L_alpha(R) = (1/N_k) sum_k exp(-i 2pi k.R) L_W(k)   [same FT as spin/H].
+// shell_ls is the per-shell angular momentum in projector-column order (from
+// parse_projection_shells); sum(2l+1) must equal num_proj. Units hbar.
+hopping_list orbital_L_operator(const gauge_data& g, const amn_data& a,
+                                const std::vector<int>& shell_ls, int alpha,
+                                const std::vector<hopping_list::cellID_t>& Rset);
+
 #endif
