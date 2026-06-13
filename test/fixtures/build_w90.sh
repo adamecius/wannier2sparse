@@ -28,7 +28,7 @@ build_from_source() {
     tar -xzf "$tgz" -C "$WORK"
     local src="$WORK/wannier90-${W90_VERSION}"
     cp "$src/config/make.inc.gfort" "$src/make.inc"
-    make -C "$src" -j"$(nproc)" wannier90.x postw90.x
+    make -C "$src" -j"$(nproc)" default   # builds wannier90.x and postw90.x
     echo "$src" > "$WORK/.w90_bin_dir"
 }
 

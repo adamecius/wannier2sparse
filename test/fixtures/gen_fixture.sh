@@ -35,7 +35,6 @@ cd "$run"
 ensure_flag() { grep -qiE "^\s*$1\s*[:=]" "$SEED.win" || echo "$1 = $2" >> "$SEED.win"; }
 ensure_flag write_hr           .true.
 ensure_flag write_xyz          .true.
-ensure_flag translate_home_cell .true.
 
 if [ "$MODE" = "soc" ]; then
     [ -x "$QE_BIN/pw.x" ] || { echo "pw.x not found; run build_qe.sh first"; exit 1; }
