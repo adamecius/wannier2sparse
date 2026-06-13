@@ -11,6 +11,9 @@ configure_file(graphene_hr.dat "${TEST_ROOT}/model_from_files/graphene_hr.dat" C
 configure_file(spin_graphene_hr.dat "${TEST_ROOT}/density_and_current_from_files/spin_graphene_hr.dat" COPYONLY)
 configure_file(spin_graphene.uc "${TEST_ROOT}/density_and_current_from_files/spin_graphene.uc" COPYONLY)
 configure_file(spin_graphene.xyz "${TEST_ROOT}/density_and_current_from_files/spin_graphene.xyz" COPYONLY)
+configure_file(spin_graphene_hr.dat "${TEST_ROOT}/csr_count_equivalence/spin_graphene_hr.dat" COPYONLY)
+configure_file(spin_graphene.uc "${TEST_ROOT}/csr_count_equivalence/spin_graphene.uc" COPYONLY)
+configure_file(spin_graphene.xyz "${TEST_ROOT}/csr_count_equivalence/spin_graphene.xyz" COPYONLY)
 
 
 set(MAIN_LIBRARY wannierlib)

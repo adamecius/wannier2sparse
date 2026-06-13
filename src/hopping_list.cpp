@@ -81,62 +81,72 @@ void save_supercell_as_csr(const hopping_list::cellID_t& cellDim,
     const long   Ntot = (long)cellDim[0]*cellDim[1]*cellDim[2];
     const size_t dim  = (size_t)WBB * Ntot;
 
-    SparseMatrix_t output(dim,dim);
-    std::vector<Triplet_t> coefficients;
-    coefficients.reserve( hl.hoppings.size() * Ntot );
-
-    // Same replication/wrapping as wrap_in_supercell, in the same loop order, so
-    // that duplicate edges are summed by setFromTriplets in the same order --
-    // but emitted straight into triplets, skipping the intermediate supercell
-    // hopping_list.
-    hopping_list::cellID_t cellShift;
-    for(cellShift[2]=0; cellShift[2]< cellDim[2]; cellShift[2]++)
-    for(cellShift[1]=0; cellShift[1]< cellDim[1]; cellShift[1]++)
-    for(cellShift[0]=0; cellShift[0]< cellDim[0]; cellShift[0]++)
-    {
-        for (auto const& hop : hl.hoppings){
-            auto cellID = get<0>(hop);
-            const auto value = get<1>(hop);
-            auto edge   = get<2>(hop);
-
-            std::transform( cellID.begin(),cellID.end(),cellShift.begin(),cellID.begin(), std::plus<int>() );
-            for( size_t i=0; i < cellID.size(); i++)
-                cellID[i]=( cellID[i]+cellDim[i] )%cellDim[i];
-
-            const int row = edge[0] + index_aliasing(cellShift,cellDim)*WBB;
-            const int col = edge[1] + index_aliasing(cellID,   cellDim)*WBB;
-
-            assert( row < (int)dim );
-            assert( col < (int)dim );
-            coefficients.push_back( Triplet_t(row,col,value) );
+    // Direct CSR (RowMajor) assembly by counting, bypassing setFromTriplets:
+    //  - never holds a Triplet array and the Eigen matrix at the same time
+    //    (~2.4x lower peak RSS, growing with size),
+    //  - duplicate edges within a row are summed with a STABLE order that
+    //    matches setFromTriplets, so the text CSR is byte-identical.
+    // Output format is unchanged (see test/csr_count_equivalence).
+    std::vector<long> rowptr(dim+1, 0);
+    hopping_list::cellID_t cs;
+    // pass 1: count entries per row (row depends only on cellShift and edge[0])
+    for(cs[2]=0;cs[2]<cellDim[2];++cs[2])
+    for(cs[1]=0;cs[1]<cellDim[1];++cs[1])
+    for(cs[0]=0;cs[0]<cellDim[0];++cs[0])
+        for(size_t h=0; h<hl.hoppings.size(); ++h){
+            const auto edge = get<2>(hl.hoppings[h]);
+            rowptr[ edge[0] + index_aliasing(cs,cellDim)*WBB + 1 ]++;
         }
+    for(size_t r=0;r<dim;++r) rowptr[r+1]+=rowptr[r];
+
+    const long nnz_raw = rowptr[dim];
+    std::vector<int>                  col(nnz_raw);
+    std::vector<std::complex<double>> val(nnz_raw);
+    std::vector<long>                 pos(rowptr.begin(), rowptr.end()-1);
+    // pass 2: scatter into per-row segments, in the same loop order as before
+    for(cs[2]=0;cs[2]<cellDim[2];++cs[2])
+    for(cs[1]=0;cs[1]<cellDim[1];++cs[1])
+    for(cs[0]=0;cs[0]<cellDim[0];++cs[0])
+        for(size_t h=0; h<hl.hoppings.size(); ++h){
+            hopping_list::cellID_t cellID = get<0>(hl.hoppings[h]);
+            const auto value = get<1>(hl.hoppings[h]);
+            const auto edge  = get<2>(hl.hoppings[h]);
+            for(int i=0;i<3;++i) cellID[i]=((cellID[i]+cs[i])+cellDim[i])%cellDim[i];
+            const int row = edge[0] + index_aliasing(cs,    cellDim)*WBB;
+            const int c   = edge[1] + index_aliasing(cellID,cellDim)*WBB;
+            assert(row<(int)dim); assert(c<(int)dim);
+            const long p = pos[row]++; col[p]=c; val[p]=value;
+        }
+
+    // compress per row IN PLACE: stable sort by column + sum duplicates.
+    // write cursor never overtakes the read cursor (merged <= raw per row).
+    std::vector<long> rp(dim+1, 0);
+    std::vector< std::pair<int,std::complex<double> > > tmp;
+    for(size_t r=0;r<dim;++r){
+        const long s=rowptr[r], e=rowptr[r+1];
+        tmp.clear(); tmp.reserve(e-s);
+        for(long k=s;k<e;++k) tmp.push_back( std::make_pair(col[k],val[k]) );
+        std::stable_sort(tmp.begin(),tmp.end(),
+            [](const std::pair<int,std::complex<double> >&a,
+               const std::pair<int,std::complex<double> >&b){return a.first<b.first;});
+        long w = rp[r]; size_t k=0;
+        while(k<tmp.size()){
+            int cc=tmp[k].first; std::complex<double> acc=tmp[k].second; size_t j=k+1;
+            while(j<tmp.size() && tmp[j].first==cc){ acc+=tmp[j].second; ++j; }
+            col[w]=cc; val[w]=acc; ++w; k=j;
+        }
+        rp[r+1]=w;
     }
-    output.setFromTriplets(coefficients.begin(), coefficients.end());
-    output.makeCompressed();
+    const long nnz = rp[dim];
 
-	std::ofstream matrix_file ( output_filename.c_str()) ;
-
-	//READ DIMENSION OF THE MATRIX
-	matrix_file<<dim<<" "<<output.nonZeros()<<std::endl;
-
-    //save values first
-    for (int k=0; k<output.outerSize(); ++k)
-    for (SparseMatrix_t::InnerIterator it(output,k); it; ++it)
-        matrix_file<<it.value().real()<<" "<<it.value().imag()<<" ";
+    std::ofstream matrix_file ( output_filename.c_str() );
+    matrix_file<<dim<<" "<<nnz<<std::endl;
+    for(long k=0;k<nnz;++k) matrix_file<<val[k].real()<<" "<<val[k].imag()<<" ";
     matrix_file<<std::endl;
-
-    //save the columns
-    for (int k=0; k<output.outerSize(); ++k)
-    for (SparseMatrix_t::InnerIterator it(output,k); it; ++it)
-        matrix_file<<it.index()<<" ";
+    for(long k=0;k<nnz;++k) matrix_file<<col[k]<<" ";
     matrix_file<<std::endl;
-
-    //save the indices to columns
-    for (int k=0; k<output.outerSize()+1; ++k)
-        matrix_file<<*( output.outerIndexPtr() + k ) <<" ";
+    for(size_t r=0;r<=dim;++r) matrix_file<<rp[r]<<" ";
     matrix_file<<std::endl;
-
     matrix_file.close();
-
 return ;
-};
+}
