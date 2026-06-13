@@ -158,3 +158,72 @@ factor explicitly in the operator descriptor (Plan 6 sidecar).
 ### `u_dis.mat` presence
 Absent for non-entangled runs (`num_bands == num_wann`) ⇒ use `V = U`. Present
 for Fe (disentangled). See `plot.F90:1671` (`if (have_disentangled)`).
+
+---
+
+## 5 — Orbital angular momentum `L` (Plan 8): real harmonics, fixed-ℓ only
+
+### Principle — why hybrids are out of scope (not a punt)
+On-site `L` is well-defined **only within a fixed-ℓ shell**: `L` is block-diagonal
+in ℓ (`⟨ℓ‖L‖ℓ′⟩ = 0` for ℓ≠ℓ′) and mixes only the real harmonics inside one ℓ.
+A hybrid projector (`sp3`, `sp3d2`, …) is a linear combination spanning ℓ=0,1,2
+on the same atom; projecting `L` onto a hybrid basis requires choosing how the
+hybrid decomposes into pure-ℓ parts and what "orbital L" even means across an
+s/p/d mixture — a **modeling choice, not a convention** you can read off a table.
+
+Therefore this first cut supports **only a complete pure `p` shell (all of
+pz,px,py) or a complete pure `d` shell (all of dz2,dxz,dyz,dx2-y2,dxy)** per atom.
+Anything else **must raise a clear error naming the offending projection**:
+- hybrids (`sp`, `sp2`, `sp3`, `sp3d`, `sp3d2`), `f`, and bare `s`;
+- an **incomplete** shell (e.g. only `dxy`, or `dxy;dxz;dyz`) — `L` mixes all
+  members of the shell, so a partial shell cannot represent it.
+
+### Real-harmonic order + phase (source)
+- W90 3.1.0 `src/parameters.F90:5367-5383` maps labels to `(l, mr)`:
+  p → mr 1,2,3 = `pz, px, py`; d → mr 1..5 = `dz2, dxz, dyz, dx2-y2, dxy`.
+- `doc/user_guide/projections.tex` Table (l, mr, name, Θ_lmr) gives the explicit
+  **Condon–Shortley** real harmonics: `pz∝z/r`, `px∝x/r`, `py∝y/r`;
+  `dz2∝3z²−r²`, `dxz∝xz`, `dyz∝yz`, `dx2-y2∝x²−y²`, `dxy∝xy`.
+- Cross-check: `QE 7.2 PP/src/pw2wannier90.f90:69` — `l_w, mr_w … as from table
+  3.1,3.2`; the `.amn` columns / `.win` projection expansion are emitted in this
+  `(l, mr)` order. **The `L_local` basis order must equal the `.amn` column order**
+  (a mismatch silently transposes L into the wrong basis → wrong-but-plausible
+  values, the worst failure mode).
+
+### `Lx, Ly, Lz` — derived symbolically (do not transcribe literals)
+Work in `ħ = 1`. In the complex `|l,m⟩` basis (`m = −l..+l`):
+```
+Lz|l,m⟩ = m|l,m⟩ ;  L±|l,m⟩ = sqrt(l(l+1) − m(m±1)) |l,m±1⟩ ;  Lx=(L+ +L-)/2 ;  Ly=(L+ −L-)/(2i)
+```
+Let `C` have as columns the W90 real harmonics expressed in `|l,m⟩` (Condon–Shortley):
+- p: `pz = |1,0⟩`, `px = (|1,−1⟩ − |1,+1⟩)/√2`, `py = i(|1,−1⟩ + |1,+1⟩)/√2`.
+- d: `dz2 = |2,0⟩`, `dxz = (|2,−1⟩ − |2,+1⟩)/√2`, `dyz = i(|2,−1⟩ + |2,+1⟩)/√2`,
+     `dx2-y2 = (|2,−2⟩ + |2,+2⟩)/√2`, `dxy = i(|2,−2⟩ − |2,+2⟩)/√2`.
+
+Then in the real basis (W90 column order):
+```
+L_α(real) = C† · L_α(complex) · C        (α = x,y,z)
+```
+For p this yields the standard vector (so(3)) generators `(L_a)_{bc} = −i ε_{abc}`
+in the (z,x,y) ordering, eigenvalues of `Lz` = {−1,0,+1}. The implementation
+**constructs `C` and `L_α(complex)` from the formulas above and forms `C† L C`**;
+the literal matrices are never hand-typed. Units of the emitted operator: **ħ**.
+
+### Projector route + FT (reuses P7)
+`A_{m,α}(k)` from `.amn` (`num_bands × num_proj`); `V(k)` from P7
+(`num_bands × num_wann`). Then `C(k) = A(k)† V(k)` (`num_proj × num_wann`),
+`L_W^α(k) = C(k)† · L_local^α · C(k)` (`num_wann × num_wann`) with `L_local^α`
+block-diagonal over the per-shell `L_α(real)` blocks (zero across shells/atoms),
+and `L_W^α(R) = (1/N_k) Σ_k e^{−i 2π k·R} L_W^α(k)` — **identical FT to §1**.
+
+### Validation (analogous to §4)
+Self-contained, decisive: `L_α = L_α†`; `[Lx,Ly] = i Lz` (catches ordering/phase
+errors immediately); `Tr L_α = 0` per shell; `eig(Lz) = {−1,0,1}` (p) /
+`{−2,−1,0,1,2}` (d). Defer any external quantitative cross-check.
+
+### ⚠️ Forward note — Fe is *not* a P8 validation target
+The Fe `example17` projections are `sp3d2;dxy;dxz;dyz` — a **hybrid (`sp3d2`) plus a
+partial d** — so Fe **deliberately hits the hybrid/incomplete-shell error path**.
+That is expected and correct for this cut. P8 must be validated against a
+**pure p-shell or d-shell-only** Wannier model; **"P8 done" does NOT mean "Fe
+orbital L works"** — full Fe orbital L needs the deferred hybrid handling.
