@@ -165,3 +165,49 @@ void save_supercell_as_csr(const hopping_list::cellID_t& cellDim,
     matrix_file.close();
 return ;
 }
+
+
+SparseMatrix_t supercell_matrix(const hopping_list::cellID_t& cellDim,
+                                const hopping_list& hl)
+{
+    const hopping_list sc = wrap_in_supercell(cellDim, hl);
+    const size_t dim = sc.WannierBasisSize();
+
+    std::vector<Triplet_t> coefficients;
+    coefficients.reserve( sc.hoppings.size() );
+    for (auto const& hop : sc.hoppings)
+    {
+        const auto edge = get<2>(hop);
+        coefficients.push_back( Triplet_t(edge[0], edge[1], get<1>(hop)) );
+    }
+    SparseMatrix_t m(dim, dim);
+    m.setFromTriplets(coefficients.begin(), coefficients.end());
+    m.makeCompressed();
+    return m;
+}
+
+
+void write_csr(const SparseMatrix_t& output, string output_filename)
+{
+    const long dim = output.rows();
+
+    std::ofstream matrix_file ( output_filename.c_str() );
+    matrix_file<<dim<<" "<<output.nonZeros()<<std::endl;
+
+    for (int k=0; k<output.outerSize(); ++k)
+    for (SparseMatrix_t::InnerIterator it(output,k); it; ++it)
+        matrix_file<<it.value().real()<<" "<<it.value().imag()<<" ";
+    matrix_file<<std::endl;
+
+    for (int k=0; k<output.outerSize(); ++k)
+    for (SparseMatrix_t::InnerIterator it(output,k); it; ++it)
+        matrix_file<<it.index()<<" ";
+    matrix_file<<std::endl;
+
+    for (int k=0; k<output.outerSize()+1; ++k)
+        matrix_file<<*( output.outerIndexPtr() + k ) <<" ";
+    matrix_file<<std::endl;
+
+    matrix_file.close();
+return ;
+}

@@ -218,6 +218,18 @@ hopping_list wrap_in_supercell(const hopping_list::cellID_t& cellDim,const hoppi
 void save_supercell_as_csr(const hopping_list::cellID_t& cellDim,
                            const hopping_list& hl, string output_filename);
 
+// Assemble the expanded supercell of `hl` as an Eigen sparse matrix (replicate +
+// PBC-wrap, then sum duplicate edges). Lets operators be combined algebraically
+// after expansion (e.g. the spin current J = 1/2{V,S}).
+SparseMatrix_t supercell_matrix(const hopping_list::cellID_t& cellDim,
+                                const hopping_list& hl);
+
+// Write a sparse matrix to the CSR text format used throughout the tool:
+//   dim nnz / real imag ... / column indices ... / row pointers ...
+// Factored out so both hopping-list export and derived (matrix) operators share
+// exactly one writer.
+void write_csr(const SparseMatrix_t& matrix, string output_filename);
+
 /**
  * Build the legacy textual tag for a hopping.
  *

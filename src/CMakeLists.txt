@@ -6,6 +6,7 @@ set(PUBLIC_HEADERS
     ${PROJECT_SOURCE_DIR}/include/wannier_parser.hpp
     ${PROJECT_SOURCE_DIR}/include/hopping_list.hpp
     ${PROJECT_SOURCE_DIR}/include/sparse_matrix.hpp
+    ${PROJECT_SOURCE_DIR}/include/operator_algebra.hpp
     ${PROJECT_SOURCE_DIR}/include/tbmodel.hpp
     ${PROJECT_SOURCE_DIR}/include/w2sp_arguments.hpp
 )

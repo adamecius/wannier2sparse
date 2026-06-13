@@ -35,6 +35,9 @@ public:
     // External operators to ingest from _hr.dat-format files: (NAME, PATH).
     // Each is expanded through the same engine and written as <prefix>.NAME.CSR.
     std::vector<std::pair<std::string, std::string> > op_files;
+    // Derived spin currents J = 1/2{V,S}: (velocity axis, spin axis), each in
+    // {X,Y,Z}. Written as <prefix>.J<V>S<S>.CSR.
+    std::vector<std::pair<char, char> > spin_currents;
     std::string              program_name;
 
     W2SP_arguments()
@@ -61,6 +64,14 @@ public:
         return false;
     }
 
+    // Normalize a single-letter cartesian axis to upper case, or '?' if invalid.
+    static char to_axis(const std::string& s)
+    {
+        if (s.size() != 1) return '?';
+        const char c = static_cast<char>(std::toupper(static_cast<unsigned char>(s[0])));
+        return (c == 'X' || c == 'Y' || c == 'Z') ? c : '?';
+    }
+
     Status parse(int argc, char* argv[])
     {
         if (argc > 0) program_name = argv[0];
@@ -85,6 +96,14 @@ public:
                 const std::string nm = argv[++i];
                 const std::string pth = argv[++i];
                 op_files.push_back(std::make_pair(nm, pth));
+            }
+            else if (a == "--spin-current")
+            {
+                if (i + 2 >= argc) { error("'--spin-current' needs a velocity axis and a spin axis (X|Y|Z)"); return EXIT_ERROR; }
+                const char vd = to_axis(argv[++i]);
+                const char sd = to_axis(argv[++i]);
+                if (vd == '?' || sd == '?') { error("'--spin-current' axes must be X, Y or Z"); return EXIT_ERROR; }
+                spin_currents.push_back(std::make_pair(vd, sd));
             }
             else if (a == "all")                   { want_all = true; }
             else if (a.size() > 1 && a[0] == '-' && !std::isdigit(static_cast<unsigned char>(a[1])))
@@ -176,6 +195,10 @@ private:
 "                         PATH and write it as <LABEL>.NAME.CSR. Repeatable.\n"
 "                         Enables hand-built tight-binding models and operators\n"
 "                         produced outside this tool.\n"
+"      --spin-current V S Write the derived spin current J = 1/2(V*S + S*V) for\n"
+"                         velocity axis V and spin axis S (each X|Y|Z), formed by\n"
+"                         sparse matrix product after expansion, as\n"
+"                         <LABEL>.J<V>S<S>.CSR. Repeatable.\n"
 "  -h, --help             Show this help and exit.\n"
 "      --list-operators   List valid operator names and exit.\n"
 "      --version          Show version and exit.\n"

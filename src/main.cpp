@@ -6,6 +6,7 @@
 #include "w2sp_arguments.hpp"
 #include "tbmodel.hpp"
 #include "hopping_list.hpp"
+#include "operator_algebra.hpp"
 
 using namespace std;
 
@@ -60,7 +61,7 @@ int main(int argc, char* argv[])
     // orbital positions (.xyz) and lattice vectors (.uc); a plain Hamiltonian or
     // an externally ingested --op-file operator needs only its _hr.dat. So .uc
     // and .xyz are required only when at least one such operator is requested.
-    const bool need_positions = !args.operators.empty();
+    const bool need_positions = !args.operators.empty() || !args.spin_currents.empty();
 
     bool missing = false;
     if (!file_exists(f_hr))
@@ -119,6 +120,22 @@ int main(int argc, char* argv[])
              << " -> " << prefix << "." << nf.first << ".CSR\n";
         hopping_list h = model.readOperatorModel(nf.second);
         save_supercell_as_csr(args.cellDim, h, prefix + "." + nf.first + ".CSR");
+    }
+
+    // Derived spin currents J = 1/2{V,S}, formed by sparse matrix product on the
+    // expanded operators (Plan 3).
+    for (const auto& vs : args.spin_currents)
+    {
+        const int vdir = (vs.first == 'X') ? 0 : (vs.first == 'Y') ? 1 : 2;
+        const char sdir = static_cast<char>(std::tolower(static_cast<unsigned char>(vs.second)));
+        const string name = string("J") + vs.first + "S" + vs.second;
+
+        cout << "Writing spin current " << name << " = 1/2{V" << vs.first
+             << ",S" << vs.second << "} -> " << prefix << "." << name << ".CSR\n";
+
+        const SparseMatrix_t V = supercell_matrix(args.cellDim, model.createHoppingCurrents_list(vdir));
+        const SparseMatrix_t S = supercell_matrix(args.cellDim, model.createHoppingSpinDensity_list(sdir));
+        write_csr(anticommutator(V, S), prefix + "." + name + ".CSR");
     }
 
     cout << "Supercells created successfully\n";
