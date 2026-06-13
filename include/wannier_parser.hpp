@@ -26,7 +26,9 @@ inline int safe_stoi(const std::string& s ){
     return output;
 };
 
-tuple<int, vector<string> > read_wannier_file(const string wannier_filename);
+// Returns (num_wann, ndegen[nrpts], hopping_lines). ndegen holds the
+// Wigner-Seitz degeneracy weight of each R-point block, in block order.
+tuple<int, vector<int>, vector<string> > read_wannier_file(const string wannier_filename);
 
 vector< tuple<string, array<double, 3> > > read_xyz_file(const string xyz_filename);
 

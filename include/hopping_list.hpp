@@ -186,11 +186,13 @@ struct hopping_list
 /**
  * Parse Wannier90 `_hr.dat` data into a hopping list.
  *
- * The parser keeps all nonzero terms from the unit-cell Hamiltonian. Orbital
- * indices are converted from Wannier's one-based convention to zero-based
- * indices used internally.
+ * Takes (num_wann, ndegen, hopping_lines). Each hopping is divided by the
+ * Wigner-Seitz degeneracy of its R-block (standard W90 normalization; a no-op
+ * when every ndegen is 1). The parser keeps all nonzero terms from the
+ * unit-cell Hamiltonian. Orbital indices are converted from Wannier's one-based
+ * convention to zero-based indices used internally.
  */
-hopping_list create_hopping_list( tuple<int, vector<string> > wannier_data  );
+hopping_list create_hopping_list( tuple<int, vector<int>, vector<string> > wannier_data  );
 
 /**
  * Replicate a unit-cell hopping list over a periodic supercell.

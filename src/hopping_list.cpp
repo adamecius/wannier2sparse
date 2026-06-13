@@ -1,10 +1,20 @@
 #include "hopping_list.hpp"
 
-hopping_list create_hopping_list( tuple<int, vector<string> > wannier_data  )
+hopping_list create_hopping_list( tuple<int, vector<int>, vector<string> > wannier_data  )
 {
     hopping_list hl;
-    hl.num_wann= get<0>(wannier_data); //number of wannier functions
-    const vector<string> hopping_lines= get<1>(wannier_data); //strings containing the hopping data
+    const int num_wann = get<0>(wannier_data);
+    hl.num_wann = num_wann;                                  //number of wannier functions
+    const vector<int>&    ndegen        = get<1>(wannier_data); //WS degeneracy per R block
+    const vector<string>& hopping_lines = get<2>(wannier_data); //strings with the hopping data
+
+    // Hoppings arrive in blocks of num_wann^2 lines, one block per Wigner-Seitz
+    // point, in the same order as ndegen. Each value is divided by its block's
+    // degeneracy (the standard W90 ndegen normalization; a no-op when all are 1).
+    // The block index is computed from the RAW line ordinal so the near-zero
+    // filter below cannot desynchronize the counter.
+    const long block_size = (long)num_wann * num_wann;
+    long raw = 0;
     for (auto line : hopping_lines){
         stringstream ss(line);
         ss.precision( numeric_limits<double>::digits10+2);
@@ -18,6 +28,11 @@ hopping_list create_hopping_list( tuple<int, vector<string> > wannier_data  )
 
         double re,im; ss>>re>>im;
         hopping_list::value_t hop_value(re,im);
+
+        const long block = (block_size > 0) ? raw / block_size : 0;
+        if( block < (long)ndegen.size() && ndegen[block] > 0 )
+            hop_value /= (double)ndegen[block];
+        ++raw;
 
         if( sqrt( norm(hop_value) )> numeric_limits<double>::epsilon() )
             hl.hoppings.push_back(hopping_list::hopping_t(cellID,hop_value,vertex_edge));
