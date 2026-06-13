@@ -1,4 +1,33 @@
 #include "hopping_list.hpp"
+#include <stdexcept>
+
+void guard_minimum_image(const hopping_list& hl, const hopping_list::cellID_t& cellDim)
+{
+    const auto collisions = aliasing_collisions(hl, cellDim);
+    if (collisions.empty()) return;                       // safe
+
+    // Range per axis, to report the minimum safe N (= 2*range + 1).
+    hopping_list::cellID_t rng = {0, 0, 0};
+    for (const auto& h : hl.hoppings)
+    {
+        const auto R = std::get<0>(h);
+        for (int d = 0; d < 3; ++d) { const int a = R[d] < 0 ? -R[d] : R[d]; if (a > rng[d]) rng[d] = a; }
+    }
+    for (int d = 0; d < 3; ++d)
+    {
+        if (cellDim[d] >= 2*rng[d] + 1) continue;
+        std::ostringstream msg;
+        msg << "supercell N=" << cellDim[d] << " along axis " << d
+            << " is too small for hopping range " << rng[d] << ". Distinct R alias onto the "
+            << "same bond under periodic wrapping (minimum image requires N >= 2*range+1 = "
+            << (2*rng[d] + 1) << "), which would corrupt the operator. Example: " << collisions.front()
+            << ". Enlarge to >=" << (2*rng[d] + 1)
+            << ", or this axis needs k-point (Bloch) sampling, which wannier2sparse does not do by design.";
+        throw std::runtime_error(msg.str());
+    }
+    // collisions present but every axis nominally large enough (asymmetric range)
+    throw std::runtime_error("minimum-image aliasing under periodic wrapping: " + collisions.front());
+}
 
 hopping_list create_hopping_list( tuple<int, vector<int>, vector<string> > wannier_data  )
 {

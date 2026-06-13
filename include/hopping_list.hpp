@@ -226,6 +226,38 @@ hopping_list wrap_in_supercell(const hopping_list::cellID_t& cellDim,const hoppi
 void save_supercell_as_csr(const hopping_list::cellID_t& cellDim,
                            const hopping_list& hl, string output_filename);
 
+// Minimum-image aliasing detector (shared by --check and the expansion guard).
+// Returns one string per colliding pair: two distinct R for the same (i,j) that
+// collapse onto the same supercell bond R mod cellDim. Empty => safe.
+inline std::vector<std::string>
+aliasing_collisions(const hopping_list& hl, const hopping_list::cellID_t& cellDim)
+{
+    auto wrap = [&](int v, int n){ return ((v % n) + n) % n; };
+    std::map<std::array<int,5>, std::array<int,3> > seen;
+    std::vector<std::string> out;
+    for (const auto& h : hl.hoppings)
+    {
+        const auto R = std::get<0>(h); const auto e = std::get<2>(h);
+        const std::array<int,5> wk = { wrap(R[0],cellDim[0]), wrap(R[1],cellDim[1]),
+                                       wrap(R[2],cellDim[2]), e[0], e[1] };
+        auto it = seen.find(wk);
+        if (it == seen.end()) seen[wk] = {R[0],R[1],R[2]};
+        else if (it->second != std::array<int,3>{R[0],R[1],R[2]})
+            out.push_back("(i,j)=(" + std::to_string(e[0]) + "," + std::to_string(e[1]) +
+                          "): R=(" + std::to_string(it->second[0]) + "," + std::to_string(it->second[1]) +
+                          "," + std::to_string(it->second[2]) + ") and R=(" + std::to_string(R[0]) +
+                          "," + std::to_string(R[1]) + "," + std::to_string(R[2]) + ")");
+    }
+    return out;
+}
+
+// Abort (throw std::runtime_error) if expanding hl into cellDim would alias
+// distinct R onto the same bond under periodic wrapping. Real-space minimum image
+// needs N >= 2*range+1 per axis. Used by the CLI (main) before export -- NOT by
+// wrap_in_supercell/save_supercell_as_csr themselves, which permit folding (the
+// equivalence/folding unit tests rely on small-N collapse).
+void guard_minimum_image(const hopping_list& hl, const hopping_list::cellID_t& cellDim);
+
 // Assemble the expanded supercell of `hl` as an Eigen sparse matrix (replicate +
 // PBC-wrap, then sum duplicate edges). Lets operators be combined algebraically
 // after expansion (e.g. the spin current J = 1/2{V,S}).

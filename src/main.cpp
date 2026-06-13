@@ -161,6 +161,14 @@ int main(int argc, char* argv[])
     cout << "Creating the supercell (" << args.cellDim[0] << ","
          << args.cellDim[1] << "," << args.cellDim[2] << ")\n";
 
+    try {
+
+    // Plan 10D: refuse to emit corrupted operators. Every generated operator
+    // shares H's R-range (velocity/spin/current/exact-spin/orbital-L are all
+    // built on the H Wigner-Seitz set), so guarding the (post-wsvec) H covers
+    // them; external op-files are guarded individually below.
+    guard_minimum_image(model.hl, args.cellDim);
+
     cout << "Writing Hamiltonian -> " << prefix << ".HAM.CSR\n";
     save_supercell_as_csr(args.cellDim, model.hl, prefix + ".HAM.CSR");
     run_checks(args, "HAM", model.hl, K_HAM);
@@ -203,6 +211,7 @@ int main(int argc, char* argv[])
         cout << "Ingesting operator " << nf.first << " from " << nf.second
              << " -> " << prefix << "." << nf.first << ".CSR\n";
         hopping_list h = model.readOperatorModel(nf.second);
+        guard_minimum_image(h, args.cellDim);           // external op may have its own range
         save_supercell_as_csr(args.cellDim, h, prefix + "." + nf.first + ".CSR");
         if (args.emit_descriptor)
             write_descriptor(describe("external", nf.first, "", "ingested from " + nf.second),
@@ -316,5 +325,10 @@ int main(int argc, char* argv[])
     }
 
     cout << "Supercells created successfully\n";
+
+    } catch (const std::exception& e) {
+        cerr << args.program_name << ": error: " << e.what() << "\n";
+        return 1;
+    }
     return 0;
 }

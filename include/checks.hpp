@@ -68,34 +68,11 @@ inline check_result trace_rule(const hopping_list& hl, bool expect_traceless, do
              "Tr O(R=0)" + std::string(expect_traceless ? " (expect 0)" : "") };
 }
 
-// Minimum-image aliasing: two distinct R for the same (i,j) that collapse onto
-// the same supercell bond R mod cellDim. Returns the colliding entries (empty if
-// safe). Shared by --check (report) and wrap_in_supercell (abort).
-inline std::vector<std::string> aliasing_collisions(const hopping_list& hl,
-                                                    const hopping_list::cellID_t& cellDim)
-{
-    auto wrap = [&](int v, int n){ return ((v % n) + n) % n; };
-    std::map<std::array<int,5>, std::array<int,3> > seen;   // (wrappedR,i,j) -> original R
-    std::vector<std::string> out;
-    for (const auto& h : hl.hoppings)
-    {
-        const auto R = std::get<0>(h); const auto e = std::get<2>(h);
-        const std::array<int,5> wk = { wrap(R[0],cellDim[0]), wrap(R[1],cellDim[1]),
-                                       wrap(R[2],cellDim[2]), e[0], e[1] };
-        auto it = seen.find(wk);
-        if (it == seen.end()) seen[wk] = {R[0],R[1],R[2]};
-        else if (it->second != std::array<int,3>{R[0],R[1],R[2]})
-            out.push_back("(i,j)=(" + std::to_string(e[0]) + "," + std::to_string(e[1]) +
-                          "): R=(" + std::to_string(it->second[0]) + "," + std::to_string(it->second[1]) +
-                          "," + std::to_string(it->second[2]) + ") and R=(" + std::to_string(R[0]) +
-                          "," + std::to_string(R[1]) + "," + std::to_string(R[2]) + ") alias");
-    }
-    return out;
-}
-
+// Minimum-image aliasing (shared logic lives in hopping_list.hpp, also used by
+// the expansion guard in Plan 10D).
 inline check_result aliasing(const hopping_list& hl, const hopping_list::cellID_t& cellDim)
 {
-    const auto c = aliasing_collisions(hl, cellDim);
+    const auto c = ::aliasing_collisions(hl, cellDim);
     return { "aliasing", c.empty(), double(c.size()),
              c.empty() ? "no minimum-image collisions" : (std::to_string(c.size()) + " colliding pairs: " + c.front()) };
 }
