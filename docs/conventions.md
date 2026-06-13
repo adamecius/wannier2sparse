@@ -266,3 +266,99 @@ the exact O_W(k) export path for the installed WannierBerri version confirmed.
 convention I vs II). The cross-check must fix the **same** convention on both
 sides (matching how `<seed>_hr.dat` was built) or the `O_W(k)` differ by trivial
 phases. Verify against the installed WannierBerri version, not from memory.
+
+---
+
+## 7 — WannierBerri committed-golden cross-validation (Plan 11)
+
+Plan 11 closes the Level-2 cross-check with a **decoupled committed-golden**
+architecture: WannierBerri is run **once** (manually) to write a reference file
+that is versioned in the repo; the C++ tests compare against that file and **do
+not import or need WannierBerri to run**. The flag therefore splits into two
+distinct actions that must NOT collapse into one:
+
+1. **Regenerate** the golden — needs WannierBerri installed. Manual, rare,
+   outside `ctest`: `make regen-wberri-golden` (CMake custom target). Writes
+   `test/golden/*.ref` from `test/fixtures/wberri_reference.py`.
+2. **Compare** against the committed golden — does NOT need WannierBerri, only the
+   `.ref` files. Runs under `ctest -L wberri`; its gate is the file's presence,
+   not the package. Missing `.ref` (or missing fixture) → the test returns the
+   ctest `SKIP_RETURN_CODE` → **SKIPPED, not FAIL** (the two tests skip
+   independently). Default `ctest` (no `-L wberri`) never touches this.
+
+### Two separate tests, two separate goldens
+
+They validate different things and fail for different reasons, so they stay apart.
+
+**Test 1 — matrix element** (`wberri_matrix_crosscheck`). Compares the operator in
+the **Wannier gauge** at each `k` of the `mp_grid`, element by element:
+```
+O_W(k) = Σ_R (1/ndegen_R) e^{+i·2π·k·R} O_W(R)     vs   WannierBerri's V†O_B V
+```
+This is **gauge-dependent at the matrix level → the strictest check**: it catches
+FT-sign, `.spn` packing order, real-harmonic ordering, and disentanglement
+bookkeeping directly. Cost of that strictness: both codes must use the **same
+gauge files** (`.chk`/`u.mat`/`u_dis.mat`) and the **same WS convention**, or it
+fails for setup reasons, not physics. No diagonalization; full `num_wann²` matrix.
+Golden `test/golden/<seed>_<op>_matrix.ref` — header
+`seed operator n_k num_wann WS_convention wberri_version`, then rows
+`ik m n alpha Re Im`.
+
+**Test 2 — band texture** (`wberri_texture_crosscheck`). Compares the
+band-resolved expectation value at each `k`:
+```
+⟨O_α⟩_{nk} = ⟨ψ_{nk}| O_α(k) |ψ_{nk}⟩     (α = x,y,z)
+```
+reconstructed by w2s (build `O_α(k)` as in Test 1, diagonalize `H(k)`, project)
+against WannierBerri's band-resolved values. This is a **gauge-invariant physical
+quantity** (expectation in the `H(k)` eigenbasis) → **more robust** to gauge-file
+mismatch and the **independent-physics** closure, without LinQT/KPM.
+**Degeneracy handling is mandatory**: `⟨O_α⟩` per individual band is ill-defined
+inside a degenerate multiplet (this WILL occur in Fe+SOC; band-by-band would give
+false failures), so the comparator sums over the degenerate block — a **subspace
+trace** — on both sides. Bands are grouped by `|E_i − E_j| < degeneracy_tol` from
+the same `H(k)`. Golden `test/golden/<seed>_<op>_texture.ref` — header as above
+plus a trailing `degeneracy_tol`, then rows `ik ibnd alpha value` with degenerate
+blocks tagged so the comparator sums over them.
+
+### Tolerances (acceptance)
+
+- **Test 1**: `max|O_W(k)^{w2s} − O_W(k)^{ref}| < ~1e-6` element-wise over the
+  `mp_grid` (tight; same gauge + WS convention required).
+- **Test 2**: `max|⟨O_α⟩_{nk}^{w2s} − ⟨O_α⟩^{ref}| < ~1e-5` (looser; dominated by
+  interpolation/degeneracy, not convention), subspace-trace on degenerate blocks.
+
+### WS-convention assertion (the shared trap, enforced)
+
+The `use_ws_distance` convention (§6) must be identical on both sides or `O_W(k)`
+differ by trivial per-orbital phases → false failure. The generator fixes it
+explicitly and writes the token into each `.ref` header; **both C++ tests assert
+the header's `WS_convention` equals the convention they were built for**
+(`W2S_WS_CONVENTION`, overridable via env `W2SP_WS_CONVENTION`) and abort with a
+clear message on mismatch. Test 1 is more sensitive to this than Test 2 (Test 2 is
+gauge-invariant). The matching value for our fixtures is the convention with which
+`<seed>_hr.dat` was generated — verify against the installed WannierBerri version,
+**not from memory** (this token cannot be pinned to a source line here; it is a
+build-time fact of how the fixture was made — flagged, not invented).
+
+### Fixtures and the regen workflow
+
+`make regen-wberri-golden` (WannierBerri installed) writes, for each fixture:
+`<seed>_S_matrix.ref` + `<seed>_S_texture.ref` (spin: Fe), and
+`<seed>_L_matrix.ref` + `<seed>_L_texture.ref` (orbital: copper / BaTiO3). The
+`.ref` files are generated **once, hand-validated against the WannierBerri run, and
+committed**; the default suite then stays green and fast without the dependency.
+
+### Deferred (do not fabricate)
+
+- **WannierBerri version-specific export path.** The exact attribute/API to pull
+  `O_W(k)` (e.g. `Ham_R`/`SS_R` real-space matrices vs a high-level interpolator)
+  is **version-dependent**; `wberri_reference.py` introspects and raises a clear,
+  actionable error rather than emitting unverified numbers. Confirm against the
+  installed WannierBerri source before trusting a generated golden.
+- **Orbital `L` in the Wannier gauge from WannierBerri** has no guaranteed
+  one-to-one with the w2s projector route (`C(k)=A(k)†V(k)`, `L_local`); the
+  generator guards the orbital path and flags it for confirmation.
+- **Spin-Hall conductivity `σ^z_xy`** (Pt/GaAs) needs KPM/integration → the
+  transport-level closure belongs to the LinQT connection, not this plan. Recorded
+  as pending with its published reference number when that work starts.
