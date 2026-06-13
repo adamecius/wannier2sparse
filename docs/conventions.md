@@ -171,10 +171,12 @@ on the same atom; projecting `L` onto a hybrid basis requires choosing how the
 hybrid decomposes into pure-ℓ parts and what "orbital L" even means across an
 s/p/d mixture — a **modeling choice, not a convention** you can read off a table.
 
-Therefore this first cut supports **only a complete pure `p` shell (all of
-pz,px,py) or a complete pure `d` shell (all of dz2,dxz,dyz,dx2-y2,dxy)** per atom.
+Therefore this first cut supports a **complete pure shell**: `s` (trivially
+`L=0`), a full `p` shell (pz,px,py), or a full `d` shell
+(dz2,dxz,dyz,dx2-y2,dxy) per atom. `s` is included because ℓ=0 has a
+well-defined (zero) on-site `L`; it is the complete-shell case, not a hybrid.
 Anything else **must raise a clear error naming the offending projection**:
-- hybrids (`sp`, `sp2`, `sp3`, `sp3d`, `sp3d2`), `f`, and bare `s`;
+- hybrids (`sp`, `sp2`, `sp3`, `sp3d`, `sp3d2`) and `f`+;
 - an **incomplete** shell (e.g. only `dxy`, or `dxy;dxz;dyz`) — `L` mixes all
   members of the shell, so a partial shell cannot represent it.
 
@@ -220,6 +222,15 @@ and `L_W^α(R) = (1/N_k) Σ_k e^{−i 2π k·R} L_W^α(k)` — **identical FT to
 Self-contained, decisive: `L_α = L_α†`; `[Lx,Ly] = i Lz` (catches ordering/phase
 errors immediately); `Tr L_α = 0` per shell; `eig(Lz) = {−1,0,1}` (p) /
 `{−2,−1,0,1,2}` (d). Defer any external quantitative cross-check.
+
+**Physical caveat — integer eigenvalues are on `L_local`, not `L_W`.** The
+emitted `L_W(R)` is the operator *projected onto the Wannier subspace*
+(`P_W L P_W`); Wannier functions are not pure atomic harmonics, so `L_W` does
+**not** have integer eigenvalues. The integer-eigenvalue gate ({−ℓ..ℓ}) is on
+the local generator `L_local`. For `L_W` the meaningful checks are Hermiticity
+and `L_W(R)=L_W(−R)†`. Validated end-to-end on the real pure-`d` copper fixture
+(example04, `Cu:d`): `Lz_local` eigenvalues `{−2,−1,0,1,2}`, `L_W(R)=L_W(−R)†`
+to ~1e-16. Fe still hits the hybrid error (`sp3d2`), as designed.
 
 ### ⚠️ Forward note — Fe is *not* a P8 validation target
 The Fe `example17` projections are `sp3d2;dxy;dxz;dyz` — a **hybrid (`sp3d2`) plus a

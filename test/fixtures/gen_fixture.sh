@@ -72,6 +72,11 @@ fi
 # use_ws_distance is the point of the Level-1 wsdist fixture (produces SEED_wsvec.dat)
 [ "$MODE" = "wsdist" ] && ensure_flag use_ws_distance .true.
 
+# orbital mode (Plan 10B): W90-only run of a precomputed-overlap example with a
+# pure s/p/d projection (e.g. example04 copper Cu:d) to get _u.mat/_u_dis.mat +
+# the provided .amn for the orbital-L route.
+[ "$MODE" = "orbital" ] && ensure_flag write_u_matrices .true.
+
 "$W90X" "$SEED" > "wannier90.$SEED.out"
 
 # Collect what wannier2sparse consumes (plus provenance).

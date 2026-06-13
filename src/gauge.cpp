@@ -182,11 +182,12 @@ std::vector<int> parse_projection_shells(const std::string& winfile)
         {
             const string t = lower_trim(tok);
             if (t.empty()) continue;
-            if      (t == "p") shells.push_back(1);
+            if      (t == "s") shells.push_back(0);   // complete l=0 shell -> L=0 (trivial)
+            else if (t == "p") shells.push_back(1);
             else if (t == "d") shells.push_back(2);
             else throw std::runtime_error(
                 "orbital L: unsupported projection '" + t +
-                "' -- on-site L needs a complete pure p or d shell "
+                "' -- on-site L needs a complete pure s, p or d shell "
                 "(hybrids and partial shells are out of scope; see docs/conventions.md sec 5)");
         }
     }
