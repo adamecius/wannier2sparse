@@ -24,7 +24,17 @@ WORK_W90="${W90_WORK:-/tmp/w90build}"
 WORK_QE="${QE_WORK:-/tmp/qebuild}"
 W90_BIN="${W90_BIN:-$(cat "$WORK_W90/.w90_bin_dir" 2>/dev/null || true)}"
 QE_BIN="${QE_BIN:-$(cat "$WORK_QE/.qe_bin_dir" 2>/dev/null || true)}"
-[ -x "$W90_BIN/wannier90.x" ] || { echo "wannier90.x not found; run build_w90.sh first"; exit 1; }
+
+# Resolve binaries: prefer the provisioned dirs, else fall back to PATH (e.g. a
+# system-installed quantum-espresso).
+W90X="$W90_BIN/wannier90.x"; [ -x "$W90X" ] || W90X="$(command -v wannier90.x || true)"
+PWX="$QE_BIN/pw.x";          [ -x "$PWX" ]  || PWX="$(command -v pw.x || true)"
+P2WX="$QE_BIN/pw2wannier90.x"; [ -x "$P2WX" ] || P2WX="$(command -v pw2wannier90.x || true)"
+[ -x "$W90X" ] || { echo "wannier90.x not found; run build_w90.sh first"; exit 1; }
+
+# First existing of a set of candidate input names (W90 examples use SEED.scf;
+# some setups use SEED.scf.in).
+pick() { for f in "$@"; do [ -f "$f" ] && { echo "$f"; return; }; done; echo "$1"; }
 
 mkdir -p "$OUT"
 run="$(mktemp -d /tmp/fixrun.XXXXXX)"
@@ -37,19 +47,29 @@ ensure_flag write_hr           .true.
 ensure_flag write_xyz          .true.
 
 if [ "$MODE" = "soc" ]; then
-    [ -x "$QE_BIN/pw.x" ] || { echo "pw.x not found; run build_qe.sh first"; exit 1; }
+    [ -x "$PWX" ] && [ -x "$P2WX" ] || { echo "pw.x/pw2wannier90.x not found; run build_qe.sh or apt-install quantum-espresso"; exit 1; }
     ensure_flag write_u_matrices .true.
+    # Pseudopotentials ship next to the W90 tutorials (TUT/../../pseudo). The
+    # example's relative pseudo_dir breaks once inputs are copied here, so pin it
+    # to the absolute location (and ESPRESSO_PSEUDO as a fallback).
+    PSEUDO_DIR="$(cd "$TUT/../../pseudo" 2>/dev/null && pwd || true)"
+    if [ -n "$PSEUDO_DIR" ]; then
+        export ESPRESSO_PSEUDO="$PSEUDO_DIR"
+        for inp in "$SEED.scf" "$SEED.scf.in" "$SEED.nscf" "$SEED.nscf.in"; do
+            [ -f "$inp" ] && sed -i "s|pseudo_dir *=.*|pseudo_dir = '$PSEUDO_DIR/',|" "$inp"
+        done
+    fi
     # scf -> nscf -> overlaps/projections/spin -> wannierise
-    "$QE_BIN/pw.x"            -in "$SEED.scf.in"      > scf.out
-    "$QE_BIN/pw.x"            -in "$SEED.nscf.in"     > nscf.out
-    "$W90_BIN/wannier90.x" -pp "$SEED"                            # writes SEED.nnkp
-    "$QE_BIN/pw2wannier90.x" -in "$SEED.pw2wan.in"   > pw2wan.out # writes amn/mmn/eig/spn
+    "$PWX"  -in "$(pick "$SEED.scf"  "$SEED.scf.in")"  > scf.out
+    "$PWX"  -in "$(pick "$SEED.nscf" "$SEED.nscf.in")" > nscf.out
+    "$W90X" -pp "$SEED"                                            # writes SEED.nnkp
+    "$P2WX" -in "$(pick "$SEED.pw2wan" "$SEED.pw2wan.in")" > pw2wan.out  # amn/mmn/eig/spn
 fi
 
 # use_ws_distance is the point of the Level-1 wsdist fixture (produces SEED_wsvec.dat)
 [ "$MODE" = "wsdist" ] && ensure_flag use_ws_distance .true.
 
-"$W90_BIN/wannier90.x" "$SEED" > "wannier90.$SEED.out"
+"$W90X" "$SEED" > "wannier90.$SEED.out"
 
 # Collect what wannier2sparse consumes (plus provenance).
 for f in "${SEED}_hr.dat" "${SEED}_wsvec.dat" "${SEED}.eig" "${SEED}_centres.xyz" \
