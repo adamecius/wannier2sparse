@@ -27,7 +27,7 @@ build_from_source() {
         "https://github.com/QEF/q-e/archive/refs/tags/qe-${QE_VERSION}.tar.gz"
     tar -xzf "$tgz" -C "$WORK"
     local src="$WORK/q-e-qe-${QE_VERSION}"
-    ( cd "$src" && ./configure --disable-parallel && make -j"$(nproc)" pw pp w90 )
+    ( cd "$src" && ./configure --disable-parallel && make -j"$(nproc)" pw pp )
     echo "$src/bin" > "$WORK/.qe_bin_dir"
 }
 
