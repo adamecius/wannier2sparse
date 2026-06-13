@@ -10,6 +10,7 @@ set(PUBLIC_HEADERS
     ${PROJECT_SOURCE_DIR}/include/descriptor.hpp
     ${PROJECT_SOURCE_DIR}/include/gauge.hpp
     ${PROJECT_SOURCE_DIR}/include/local_operators.hpp
+    ${PROJECT_SOURCE_DIR}/include/checks.hpp
     ${PROJECT_SOURCE_DIR}/include/tbmodel.hpp
     ${PROJECT_SOURCE_DIR}/include/w2sp_arguments.hpp
 )

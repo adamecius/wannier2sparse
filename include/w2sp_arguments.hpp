@@ -49,6 +49,9 @@ public:
     // Build orbital angular momentum L from .amn + _u.mat + .win projections via
     // the projector route (Plan 8; pure p/d shells only).
     bool                     orbital_l;
+    // Self-verification: "" = off; "all" or a specific check name (hermiticity,
+    // sum_rules, algebra, aliasing, bounds). Writes <op>.check sidecars (Plan 10A).
+    std::string              check;
     std::string              program_name;
 
     W2SP_arguments()
@@ -139,6 +142,17 @@ public:
             else if (a == "--bounds")              { emit_descriptor = true; }
             else if (a == "--exact-spin")          { exact_spin = true; }
             else if (a == "--orbital-l" || a == "--orbital-L") { orbital_l = true; }
+            else if (a == "--check")
+            {
+                // optional selector; default "all"
+                static const char* known[] = {"all","hermiticity","sum_rules","algebra","aliasing","bounds"};
+                check = "all";
+                if (i + 1 < argc)
+                {
+                    const std::string nxt = argv[i+1];
+                    for (const char* kw : known) if (nxt == kw) { check = nxt; ++i; break; }
+                }
+            }
             else if (a == "all")                   { want_all = true; }
             else if (a.size() > 1 && a[0] == '-' && !std::isdigit(static_cast<unsigned char>(a[1])))
                                                    { error("unknown option '" + a + "'"); return EXIT_ERROR; }
@@ -245,6 +259,9 @@ private:
 "      --orbital-L        Build orbital angular momentum LX/LY/LZ from <seed>.amn\n"
 "                         + <seed>_u.mat + <seed>.win projections (units hbar).\n"
 "                         Pure p/d shells only; errors on hybrids (e.g. sp3d2).\n"
+"      --check [NAME]     Self-verify each operator (hermiticity, sum_rules,\n"
+"                         algebra, aliasing, bounds) -> <op>.check sidecars.\n"
+"                         NAME selects one check; default is all. CSR unchanged.\n"
 "  -h, --help             Show this help and exit.\n"
 "      --list-operators   List valid operator names and exit.\n"
 "      --version          Show version and exit.\n"

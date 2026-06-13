@@ -10,6 +10,7 @@
 #include "descriptor.hpp"
 #include "gauge.hpp"
 #include "local_operators.hpp"
+#include "checks.hpp"
 #include <set>
 #include <stdexcept>
 
@@ -67,6 +68,33 @@ static bool build_operator(tbmodel& model, const string& op, hopping_list& out)
         }
     }
     return false;
+}
+
+enum op_kind { K_GENERIC, K_HAM, K_SPIN, K_ORBITAL };
+
+// Plan 10A: evaluate the requested self-checks on an assembled operator and write
+// a <prefix>.<op>.check sidecar. Never touches the CSR.
+static void run_checks(const W2SP_arguments& args, const string& opname,
+                       const hopping_list& hl, op_kind kind)
+{
+    if (args.check.empty()) return;
+    const string& w = args.check;
+    auto want = [&](const char* n){ return w == "all" || w == n; };
+    std::vector<check_result> rs;
+    if (want("hermiticity")) rs.push_back(checks::hermiticity(hl));
+    if (want("sum_rules"))   rs.push_back(checks::trace_rule(hl, kind == K_SPIN || kind == K_ORBITAL));
+    if (want("aliasing"))    rs.push_back(checks::aliasing(hl, args.cellDim));
+    if (want("algebra") && kind == K_SPIN)    rs.push_back(checks::spin_algebra());
+    if (want("algebra") && kind == K_ORBITAL) rs.push_back(checks::orbital_algebra());
+    if (want("bounds") && kind == K_HAM)
+    {
+        double a = 0, b = 0; spectral_bounds(supercell_matrix(args.cellDim, hl), a, b);
+        check_result r; r.name = "bounds"; r.pass = (a < b); r.residual = b - a;
+        r.detail = "[a,b]=[" + std::to_string(a) + "," + std::to_string(b) + "]";
+        rs.push_back(r);
+    }
+    if (!rs.empty())
+        checks::write_report(rs, args.output_dir + "/" + args.label + "." + opname + ".check");
 }
 
 int main(int argc, char* argv[])
@@ -135,6 +163,7 @@ int main(int argc, char* argv[])
 
     cout << "Writing Hamiltonian -> " << prefix << ".HAM.CSR\n";
     save_supercell_as_csr(args.cellDim, model.hl, prefix + ".HAM.CSR");
+    run_checks(args, "HAM", model.hl, K_HAM);
 
     if (args.emit_descriptor)
     {
@@ -164,6 +193,7 @@ int main(int argc, char* argv[])
         save_supercell_as_csr(args.cellDim, h, prefix + "." + op + ".CSR");
         if (args.emit_descriptor)
             write_descriptor(op_descriptor(op), prefix + "." + op + ".desc");
+        run_checks(args, op, h, (op.size()==2 && op[0]=='S') ? K_SPIN : K_GENERIC);
     }
 
     // External operators ingested verbatim from _hr.dat-format files and
@@ -232,6 +262,7 @@ int main(int argc, char* argv[])
             if (file_exists(f_ws)) s = apply_wsvec(s, read_wsvec(f_ws));  // same correction as H
             cout << "Writing exact spin " << names[alpha] << " -> " << prefix << "." << names[alpha] << ".CSR\n";
             save_supercell_as_csr(args.cellDim, s, prefix + "." + names[alpha] + ".CSR");
+            run_checks(args, names[alpha], s, K_SPIN);
             if (args.emit_descriptor)
                 write_descriptor(describe("spin", string(1, "XYZ"[alpha]), "hbar/2",
                                           "exact gauge transform V^dag S_B V from .spn"),
@@ -270,6 +301,7 @@ int main(int argc, char* argv[])
                 if (file_exists(f_ws)) L = apply_wsvec(L, read_wsvec(f_ws));
                 cout << "Writing orbital L " << names[alpha] << " -> " << prefix << "." << names[alpha] << ".CSR\n";
                 save_supercell_as_csr(args.cellDim, L, prefix + "." + names[alpha] + ".CSR");
+                run_checks(args, names[alpha], L, K_ORBITAL);
                 if (args.emit_descriptor)
                     write_descriptor(describe("orbital_L", string(1, "XYZ"[alpha]), "hbar",
                                               "projector route C=A^dag V, C^dag L_local C"),
