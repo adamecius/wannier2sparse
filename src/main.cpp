@@ -53,9 +53,10 @@ int main(int argc, char* argv[])
         case W2SP_arguments::PROCEED:    break;
     }
 
-    const string f_uc  = args.label + ".uc";
-    const string f_xyz = args.label + ".xyz";
-    const string f_hr  = args.label + "_hr.dat";
+    const string in_prefix = args.input_prefix();   // <project_dir>/<seed>, defaults to LABEL
+    const string f_uc  = in_prefix + ".uc";
+    const string f_xyz = in_prefix + ".xyz";
+    const string f_hr  = in_prefix + "_hr.dat";
 
     // Every generated operator (velocity / spin / spin-current) needs the
     // orbital positions (.xyz) and lattice vectors (.uc); a plain Hamiltonian or

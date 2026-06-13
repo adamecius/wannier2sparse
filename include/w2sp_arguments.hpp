@@ -31,6 +31,8 @@ public:
     std::array<int, 3>       cellDim;
     std::string              label;
     std::string              output_dir;
+    std::string              project_dir;   // directory holding the input files (default: cwd)
+    std::string              seed;          // seedname of the input files (default: label)
     std::vector<std::string> operators;
     // External operators to ingest from _hr.dat-format files: (NAME, PATH).
     // Each is expanded through the same engine and written as <prefix>.NAME.CSR.
@@ -42,6 +44,15 @@ public:
 
     W2SP_arguments()
         : cellDim({{1, 1, 1}}), output_dir("."), program_name("wannier2sparse") {}
+
+    // Resolved input file stem: <project_dir>/<seed>, where seed defaults to the
+    // positional LABEL and project_dir defaults to the current directory. Input
+    // files are <prefix>_hr.dat, <prefix>.uc, <prefix>.xyz.
+    std::string input_prefix() const
+    {
+        const std::string base = seed.empty() ? label : seed;
+        return project_dir.empty() ? base : (project_dir + "/" + base);
+    }
 
     // The operators this tool knows how to build (HAM is always written and is
     // not part of this list).
@@ -89,6 +100,16 @@ public:
             {
                 if (i + 1 >= argc) { error("missing directory after '" + a + "'"); return EXIT_ERROR; }
                 output_dir = argv[++i];
+            }
+            else if (a == "-p" || a == "--project")
+            {
+                if (i + 1 >= argc) { error("missing directory after '" + a + "'"); return EXIT_ERROR; }
+                project_dir = argv[++i];
+            }
+            else if (a == "--seed")
+            {
+                if (i + 1 >= argc) { error("missing name after '--seed'"); return EXIT_ERROR; }
+                seed = argv[++i];
             }
             else if (a == "--op-file")
             {
@@ -191,6 +212,9 @@ private:
 "\n"
 "OPTIONS\n"
 "  -o, --output-dir DIR   Directory for the .CSR files (default: current dir).\n"
+"  -p, --project DIR      Directory holding the input files (default: current dir).\n"
+"      --seed NAME        Seedname of the input files (default: LABEL). Inputs are\n"
+"                         <DIR>/<NAME>_hr.dat, <DIR>/<NAME>.uc, <DIR>/<NAME>.xyz.\n"
 "      --op-file NAME PATH Ingest an external operator in _hr.dat format from\n"
 "                         PATH and write it as <LABEL>.NAME.CSR. Repeatable.\n"
 "                         Enables hand-built tight-binding models and operators\n"
