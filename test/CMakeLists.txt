@@ -32,13 +32,17 @@ foreach(FILE ${TEST_FILES})
     add_test(NAME ${NAME} COMMAND ${NAME} WORKING_DIRECTORY "${TEST_DIR}"  )                              # this is how to add tests to CMake
 endforeach(FILE ${TEST_FILES})
 
-# Optional WannierBerri independent cross-check (Plan 10C).
-if(W2SP_WBERRI_CHECK)
-    set(CMAKE_RUNTIME_OUTPUT_DIRECTORY "${TEST_ROOT}/wberri_crosscheck")
-    add_executable(wberri_crosscheck wberri_crosscheck.cpp)
-    target_link_libraries(wberri_crosscheck ${MAIN_LIBRARY})
-    add_test(NAME wberri_crosscheck COMMAND wberri_crosscheck WORKING_DIRECTORY "${TEST_ROOT}/wberri_crosscheck")
-    set_tests_properties(wberri_crosscheck PROPERTIES LABELS wberri)
-endif()
+# Plan 11 -- regenerate the WannierBerri committed goldens (manual; needs the
+# package + a fixture with <seed>.chk). NOT part of `ctest`; run explicitly:
+#   W2SP_WS_CONVENTION=<conv> cmake --build build --target regen-wberri-golden
+# Fixture prefixes default to the local /tmp paths; override on the cmake line.
+set(W2SP_SPIN_FIXTURE   "/tmp/fix/Fe/Fe"        CACHE STRING "spin fixture <prefix> for the WannierBerri golden")
+set(W2SP_ORBITAL_FIXTURE "/tmp/fix/copper/copper" CACHE STRING "orbital fixture <prefix> for the WannierBerri golden")
+add_custom_target(regen-wberri-golden
+    COMMENT "Regenerating WannierBerri goldens (needs: pip install wannierberri + fixtures with .chk + W2SP_WS_CONVENTION)"
+    COMMAND ${CMAKE_COMMAND} -E make_directory ${CMAKE_CURRENT_SOURCE_DIR}/golden
+    COMMAND python3 ${CMAKE_CURRENT_SOURCE_DIR}/fixtures/wberri_reference.py ${W2SP_SPIN_FIXTURE}    spin    ${CMAKE_CURRENT_SOURCE_DIR}/golden
+    COMMAND python3 ${CMAKE_CURRENT_SOURCE_DIR}/fixtures/wberri_reference.py ${W2SP_ORBITAL_FIXTURE} orbital ${CMAKE_CURRENT_SOURCE_DIR}/golden
+    VERBATIM)
 
 include(CTest)
