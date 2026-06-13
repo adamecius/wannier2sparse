@@ -4,9 +4,6 @@
 
 # Compile C++ tests (grabs every .cpp in the test directory)
 file(GLOB_RECURSE TEST_FILES RELATIVE ${CMAKE_CURRENT_SOURCE_DIR} *.cpp)
-# The WannierBerri independent cross-check is off by default (needs the package +
-# a generated reference). Enable with -DW2SP_WBERRI_CHECK=ON (label `wberri`).
-list(REMOVE_ITEM TEST_FILES wberri_crosscheck.cpp)
 
 set( TEST_ROOT ${CMAKE_BINARY_DIR}/test)
 configure_file(graphene_hr.dat "${TEST_ROOT}/model_from_files/graphene_hr.dat" COPYONLY)
@@ -31,6 +28,19 @@ foreach(FILE ${TEST_FILES})
     target_link_libraries(${NAME} ${MAIN_LIBRARY} ) # link against our lib and boost test
     add_test(NAME ${NAME} COMMAND ${NAME} WORKING_DIRECTORY "${TEST_DIR}"  )                              # this is how to add tests to CMake
 endforeach(FILE ${TEST_FILES})
+
+# Plan 11 -- the two WannierBerri committed-golden cross-checks. They are built
+# like any other test (GLOB above), but carry the `wberri` label and skip cleanly
+# (SKIP_RETURN_CODE) when their .ref golden / fixture is absent -- so a default
+# `ctest` stays green and `ctest -L wberri` targets them. They read only the .ref
+# files in test/golden/ (W2S_GOLDEN_DIR); they never import WannierBerri.
+foreach(WB wberri_matrix_crosscheck wberri_texture_crosscheck)
+    if(TARGET ${WB})
+        target_compile_definitions(${WB} PRIVATE
+            W2S_GOLDEN_DIR="${CMAKE_CURRENT_SOURCE_DIR}/golden")
+        set_tests_properties(${WB} PROPERTIES LABELS wberri SKIP_RETURN_CODE 77)
+    endif()
+endforeach()
 
 # Plan 11 -- regenerate the WannierBerri committed goldens (manual; needs the
 # package + a fixture with <seed>.chk). NOT part of `ctest`; run explicitly:
