@@ -4,6 +4,7 @@
 #include <array>
 #include <string>
 #include <vector>
+#include <utility>
 #include <iostream>
 #include <cctype>
 
@@ -31,6 +32,9 @@ public:
     std::string              label;
     std::string              output_dir;
     std::vector<std::string> operators;
+    // External operators to ingest from _hr.dat-format files: (NAME, PATH).
+    // Each is expanded through the same engine and written as <prefix>.NAME.CSR.
+    std::vector<std::pair<std::string, std::string> > op_files;
     std::string              program_name;
 
     W2SP_arguments()
@@ -74,6 +78,13 @@ public:
             {
                 if (i + 1 >= argc) { error("missing directory after '" + a + "'"); return EXIT_ERROR; }
                 output_dir = argv[++i];
+            }
+            else if (a == "--op-file")
+            {
+                if (i + 2 >= argc) { error("'--op-file' needs NAME and PATH"); return EXIT_ERROR; }
+                const std::string nm = argv[++i];
+                const std::string pth = argv[++i];
+                op_files.push_back(std::make_pair(nm, pth));
             }
             else if (a == "all")                   { want_all = true; }
             else if (a.size() > 1 && a[0] == '-' && !std::isdigit(static_cast<unsigned char>(a[1])))
@@ -161,9 +172,17 @@ private:
 "\n"
 "OPTIONS\n"
 "  -o, --output-dir DIR   Directory for the .CSR files (default: current dir).\n"
+"      --op-file NAME PATH Ingest an external operator in _hr.dat format from\n"
+"                         PATH and write it as <LABEL>.NAME.CSR. Repeatable.\n"
+"                         Enables hand-built tight-binding models and operators\n"
+"                         produced outside this tool.\n"
 "  -h, --help             Show this help and exit.\n"
 "      --list-operators   List valid operator names and exit.\n"
 "      --version          Show version and exit.\n"
+"\n"
+"NOTE\n"
+"  LABEL.uc and LABEL.xyz are only required when a velocity/spin operator is\n"
+"  requested; a Hamiltonian (or an --op-file operator) needs only its _hr.dat.\n"
 "\n"
 "OUTPUT\n"
 "  LABEL.HAM.CSR and one LABEL.<OP>.CSR per requested operator.\n"

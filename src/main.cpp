@@ -56,11 +56,30 @@ int main(int argc, char* argv[])
     const string f_xyz = args.label + ".xyz";
     const string f_hr  = args.label + "_hr.dat";
 
+    // Every generated operator (velocity / spin / spin-current) needs the
+    // orbital positions (.xyz) and lattice vectors (.uc); a plain Hamiltonian or
+    // an externally ingested --op-file operator needs only its _hr.dat. So .uc
+    // and .xyz are required only when at least one such operator is requested.
+    const bool need_positions = !args.operators.empty();
+
     bool missing = false;
-    for (const string& f : {f_uc, f_xyz, f_hr})
-        if (!file_exists(f))
+    if (!file_exists(f_hr))
+    {
+        cerr << args.program_name << ": error: required input file '" << f_hr << "' not found\n";
+        missing = true;
+    }
+    if (need_positions)
+        for (const string& f : {f_uc, f_xyz})
+            if (!file_exists(f))
+            {
+                cerr << args.program_name << ": error: operator generation requires '" << f << "'\n";
+                missing = true;
+            }
+    for (const auto& nf : args.op_files)
+        if (!file_exists(nf.second))
         {
-            cerr << args.program_name << ": error: required input file '" << f << "' not found\n";
+            cerr << args.program_name << ": error: --op-file '" << nf.first
+                 << "': file '" << nf.second << "' not found\n";
             missing = true;
         }
     if (missing) return 1;
@@ -68,8 +87,8 @@ int main(int argc, char* argv[])
     cout << "Using " << args.label << " as the system's identification label\n";
 
     tbmodel model;
-    model.readOrbitalPositions(f_xyz);
-    model.readUnitCell(f_uc);
+    if (file_exists(f_xyz)) model.readOrbitalPositions(f_xyz);
+    if (file_exists(f_uc))  model.readUnitCell(f_uc);
     model.readWannierModel(f_hr);
 
     const string prefix = args.output_dir + "/" + args.label;
@@ -90,6 +109,16 @@ int main(int argc, char* argv[])
         }
         cout << "Writing operator " << op << " -> " << prefix << "." << op << ".CSR\n";
         save_supercell_as_csr(args.cellDim, h, prefix + "." + op + ".CSR");
+    }
+
+    // External operators ingested verbatim from _hr.dat-format files and
+    // expanded through the same engine (Plan 2).
+    for (const auto& nf : args.op_files)
+    {
+        cout << "Ingesting operator " << nf.first << " from " << nf.second
+             << " -> " << prefix << "." << nf.first << ".CSR\n";
+        hopping_list h = model.readOperatorModel(nf.second);
+        save_supercell_as_csr(args.cellDim, h, prefix + "." + nf.first + ".CSR");
     }
 
     cout << "Supercells created successfully\n";
