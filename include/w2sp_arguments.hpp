@@ -1,0 +1,178 @@
+#ifndef W2SP_ARGUMENTS
+#define W2SP_ARGUMENTS
+
+#include <array>
+#include <string>
+#include <vector>
+#include <iostream>
+#include <cctype>
+
+/*
+ * Command-line interface for wannier2sparse.
+ *
+ *   wannier2sparse LABEL N1 N2 N3 [OP ... | all] [-o DIR]
+ *
+ * LABEL      system label; the tool reads LABEL.uc, LABEL.xyz and LABEL_hr.dat.
+ * N1 N2 N3   supercell dimensions along each lattice vector (integers >= 1).
+ * OP ...     operators to generate (e.g. VX SZ); 'all' generates every operator.
+ *            If omitted, only the Hamiltonian (LABEL.HAM.CSR) is written.
+ *
+ * parse() never aborts: invalid input prints a clear message and returns a
+ * non-zero status so the caller decides how to exit.  The list of valid
+ * operators below reflects exactly what this build of tbmodel can generate
+ * (velocity, spin density and spin current; there is no torque operator here).
+ */
+class W2SP_arguments
+{
+public:
+    enum Status { PROCEED = 0, EXIT_OK = 1, EXIT_ERROR = 2 };
+
+    std::array<int, 3>       cellDim;
+    std::string              label;
+    std::string              output_dir;
+    std::vector<std::string> operators;
+    std::string              program_name;
+
+    W2SP_arguments()
+        : cellDim({{1, 1, 1}}), output_dir("."), program_name("wannier2sparse") {}
+
+    // The operators this tool knows how to build (HAM is always written and is
+    // not part of this list).
+    static const std::vector<std::string>& available_operators()
+    {
+        static const std::vector<std::string> ops = {
+            "VX", "VY", "VZ",
+            "SX", "SY", "SZ",
+            "VXSX", "VXSY", "VXSZ",
+            "VYSX", "VYSY", "VYSZ",
+            "VZSX", "VZSY", "VZSZ"
+        };
+        return ops;
+    }
+
+    static bool is_valid_operator(const std::string& op)
+    {
+        for (const auto& a : available_operators())
+            if (op == a) return true;
+        return false;
+    }
+
+    Status parse(int argc, char* argv[])
+    {
+        if (argc > 0) program_name = argv[0];
+
+        std::vector<std::string> positional;
+        bool want_all = false;
+
+        for (int i = 1; i < argc; ++i)
+        {
+            const std::string a = argv[i];
+            if (a == "-h" || a == "--help")        { print_help();      return EXIT_OK; }
+            else if (a == "--version")             { print_version();   return EXIT_OK; }
+            else if (a == "--list-operators")      { print_operators(); return EXIT_OK; }
+            else if (a == "-o" || a == "--output-dir")
+            {
+                if (i + 1 >= argc) { error("missing directory after '" + a + "'"); return EXIT_ERROR; }
+                output_dir = argv[++i];
+            }
+            else if (a == "all")                   { want_all = true; }
+            else if (a.size() > 1 && a[0] == '-' && !std::isdigit(static_cast<unsigned char>(a[1])))
+                                                   { error("unknown option '" + a + "'"); return EXIT_ERROR; }
+            else                                   { positional.push_back(a); }
+        }
+
+        if (positional.empty()) { print_usage(); return EXIT_ERROR; }
+        if (positional.size() < 4)
+        {
+            error("expected LABEL N1 N2 N3, but got " +
+                  std::to_string(positional.size()) + " positional argument(s)");
+            print_usage();
+            return EXIT_ERROR;
+        }
+
+        label = positional[0];
+        for (int i = 0; i < 3; ++i)
+        {
+            const std::string& tok = positional[1 + i];
+            try                           { cellDim[i] = std::stoi(tok); }
+            catch (const std::exception&) { error("supercell dimension '" + tok + "' is not an integer"); return EXIT_ERROR; }
+            if (cellDim[i] < 1)           { error("supercell dimension must be >= 1 (got '" + tok + "')"); return EXIT_ERROR; }
+        }
+
+        if (want_all)
+            operators = available_operators();
+        else
+            for (size_t i = 4; i < positional.size(); ++i) operators.push_back(positional[i]);
+
+        for (const auto& op : operators)
+            if (!is_valid_operator(op))
+            {
+                error("unknown operator '" + op + "'. Run --list-operators for the valid names.");
+                return EXIT_ERROR;
+            }
+
+        return PROCEED;
+    }
+
+private:
+    void error(const std::string& msg) const
+    {
+        std::cerr << program_name << ": error: " << msg << "\n";
+    }
+
+    void print_usage() const
+    {
+        std::cerr << "usage: " << program_name
+                  << " LABEL N1 N2 N3 [OP ... | all] [-o DIR]\n"
+                  << "       " << program_name << " --help\n";
+    }
+
+    void print_version() const
+    {
+        std::cout << "wannier2sparse (LinQT utility) version 1.0\n";
+    }
+
+    void print_operators() const
+    {
+        std::cout << "Available operators:\n"
+                  << "  velocity     : VX VY VZ\n"
+                  << "  spin         : SX SY SZ\n"
+                  << "  spin-current : VXSX VXSY VXSZ VYSX VYSY VYSZ VZSX VZSY VZSZ\n"
+                  << "  (or 'all' to generate every operator)\n";
+    }
+
+    void print_help() const
+    {
+        std::cout <<
+"wannier2sparse - expand a Wannier90 tight-binding model into a supercell\n"
+"and export the Hamiltonian and operators as sparse (CSR) matrices.\n"
+"\n"
+"USAGE\n"
+"  " << program_name << " LABEL N1 N2 N3 [OP ... | all] [options]\n"
+"\n"
+"ARGUMENTS\n"
+"  LABEL        System label. The tool reads:\n"
+"                 LABEL.uc      unit-cell lattice vectors\n"
+"                 LABEL.xyz     orbital positions\n"
+"                 LABEL_hr.dat  Wannier90 Hamiltonian\n"
+"  N1 N2 N3     Supercell dimensions along each lattice vector (integers >= 1).\n"
+"  OP ...       Operators to generate (e.g. VX SZ). 'all' generates every\n"
+"               operator. If omitted, only LABEL.HAM.CSR is written.\n"
+"\n"
+"OPTIONS\n"
+"  -o, --output-dir DIR   Directory for the .CSR files (default: current dir).\n"
+"  -h, --help             Show this help and exit.\n"
+"      --list-operators   List valid operator names and exit.\n"
+"      --version          Show version and exit.\n"
+"\n"
+"OUTPUT\n"
+"  LABEL.HAM.CSR and one LABEL.<OP>.CSR per requested operator.\n"
+"\n"
+"EXAMPLES\n"
+"  " << program_name << " graphene 50 50 1\n"
+"  " << program_name << " graphene 50 50 1 VX VY SZ\n"
+"  " << program_name << " graphene 50 50 1 all -o out\n";
+    }
+};
+
+#endif

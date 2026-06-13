@@ -6,6 +6,21 @@
 #include "wannier_parser.hpp"
 using namespace std ;
 
+// Read-only "value at (cellID, edge)" lookup, summing any matching terms and
+// returning zero when the key is absent.  The flat hopping_storage::operator[]
+// asserts on a missing key, so this restores the map-style read semantics these
+// tests rely on (a missing contribution counts as zero) without mutating hl.
+static hopping_list::value_t value_at(const hopping_list& hl,
+                                      const hopping_list::cellID_t& cid,
+                                      const hopping_list::edge_t& e)
+{
+    hopping_list::value_t sum(0.0, 0.0);
+    for (const auto& h : hl.hoppings)
+        if (get<0>(h) == cid && get<2>(h) == e)
+            sum += get<1>(h);
+    return sum;
+}
+
 int main( int argc, char* argv[]){    
 
     hopping_list hl_t;
@@ -75,54 +90,54 @@ int main( int argc, char* argv[]){
         hl_t.cellSizes = SCDIM;
 
         cellID={0 , 0, 0}; vertex_edge={0,1};
-        hop  = get<1>(hl_i.hoppings[get_tag(cellID,vertex_edge)]);
+        hop  = value_at(hl_i, cellID, vertex_edge);
         cellID={-1, 0, 0}; vertex_edge={0,1};
-        hop += get<1>(hl_i.hoppings[get_tag(cellID,vertex_edge)]);
+        hop += value_at(hl_i, cellID, vertex_edge);
         cellID={ 0,-1, 0}; vertex_edge={0,1};
-        hop += get<1>(hl_i.hoppings[get_tag(cellID,vertex_edge)]);
+        hop += value_at(hl_i, cellID, vertex_edge);
         cellID={0,0,0};
         hl_t.hoppings.insert( {get_tag(cellID,vertex_edge), hopping_list::hopping_t(cellID,hop,vertex_edge) } );
 
         cellID={0 , 0, 0}; vertex_edge={1,0};
-        hop  = get<1>(hl_i.hoppings[get_tag(cellID,vertex_edge)]);
+        hop  = value_at(hl_i, cellID, vertex_edge);
         cellID={ 1, 0, 0}; vertex_edge={1,0};
-        hop += get<1>(hl_i.hoppings[get_tag(cellID,vertex_edge)]);
+        hop += value_at(hl_i, cellID, vertex_edge);
         cellID={ 0, 1, 0}; vertex_edge={1,0};
-        hop += get<1>(hl_i.hoppings[get_tag(cellID,vertex_edge)]);
+        hop += value_at(hl_i, cellID, vertex_edge);
         cellID={0,0,0};
         hl_t.hoppings.insert( {get_tag(cellID,vertex_edge), hopping_list::hopping_t(cellID,hop,vertex_edge) } );
 
         cellID={0,0,0}; vertex_edge={0,0};
-        hop  = get<1>(hl_i.hoppings[get_tag(cellID,vertex_edge)]);
+        hop  = value_at(hl_i, cellID, vertex_edge);
         cellID={-1, 0, 0}; vertex_edge={0,0};
-        hop += get<1>(hl_i.hoppings[get_tag(cellID,vertex_edge)]);
+        hop += value_at(hl_i, cellID, vertex_edge);
         cellID={ 0,-1, 0}; vertex_edge={0,0};
-        hop += get<1>(hl_i.hoppings[get_tag(cellID,vertex_edge)]);
+        hop += value_at(hl_i, cellID, vertex_edge);
         cellID={ 1, 0, 0}; vertex_edge={0,0};
-        hop += get<1>(hl_i.hoppings[get_tag(cellID,vertex_edge)]);
+        hop += value_at(hl_i, cellID, vertex_edge);
         cellID={ 0, 1, 0}; vertex_edge={0,0};
-        hop += get<1>(hl_i.hoppings[get_tag(cellID,vertex_edge)]);
+        hop += value_at(hl_i, cellID, vertex_edge);
         cellID={ 1,-1, 0}; vertex_edge={0,0};
-        hop += get<1>(hl_i.hoppings[get_tag(cellID,vertex_edge)]);
+        hop += value_at(hl_i, cellID, vertex_edge);
         cellID={-1, 1, 0}; vertex_edge={0,0};
-        hop += get<1>(hl_i.hoppings[get_tag(cellID,vertex_edge)]);
+        hop += value_at(hl_i, cellID, vertex_edge);
         cellID={0,0,0};
         hl_t.hoppings.insert( {get_tag(cellID,vertex_edge), hopping_list::hopping_t(cellID,hop,vertex_edge) } );
 
         cellID={ 0, 0, 0}; vertex_edge={1,1};
-        hop  = get<1>(hl_i.hoppings[get_tag(cellID,vertex_edge)]);
+        hop  = value_at(hl_i, cellID, vertex_edge);
         cellID={-1, 0, 0}; vertex_edge={1,1};
-        hop += get<1>(hl_i.hoppings[get_tag(cellID,vertex_edge)]);
+        hop += value_at(hl_i, cellID, vertex_edge);
         cellID={ 0,-1, 0}; vertex_edge={1,1};
-        hop += get<1>(hl_i.hoppings[get_tag(cellID,vertex_edge)]);
+        hop += value_at(hl_i, cellID, vertex_edge);
         cellID={ 1, 0, 0}; vertex_edge={1,1};
-        hop += get<1>(hl_i.hoppings[get_tag(cellID,vertex_edge)]);
+        hop += value_at(hl_i, cellID, vertex_edge);
         cellID={ 0, 1, 0}; vertex_edge={1,1};
-        hop += get<1>(hl_i.hoppings[get_tag(cellID,vertex_edge)]);
+        hop += value_at(hl_i, cellID, vertex_edge);
         cellID={ 1,-1, 0}; vertex_edge={1,1};
-        hop += get<1>(hl_i.hoppings[get_tag(cellID,vertex_edge)]);
+        hop += value_at(hl_i, cellID, vertex_edge);
         cellID={-1, 1, 0}; vertex_edge={1,1};
-        hop += get<1>(hl_i.hoppings[get_tag(cellID,vertex_edge)]);
+        hop += value_at(hl_i, cellID, vertex_edge);
         cellID={0,0,0};
         hl_t.hoppings.insert( {get_tag(cellID,vertex_edge), hopping_list::hopping_t(cellID,hop,vertex_edge) } );
 

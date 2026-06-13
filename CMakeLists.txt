@@ -1,87 +1,78 @@
-cmake_minimum_required(VERSION 3.5.1)
+cmake_minimum_required(VERSION 3.14)
 
-set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} ${CMAKE_CURRENT_SOURCE_DIR}/cmake) # project specific cmake dir
-set(CMAKE_CXX_STANDARD 11) # tODO move up to a general cmake config for all sub projects ?
+project(wannier2sparse
+        VERSION 1.0.0
+        DESCRIPTION "Expand a Wannier90 tight-binding model into a supercell and export sparse (CSR) operators"
+        LANGUAGES CXX)
 
-# CMake useful variables
+include(GNUInstallDirs)
+include(CMakePackageConfigHelpers)
+
+option(W2SP_BUILD_TESTS "Build the wannier2sparse test suite" ON)
+
+# Keep the executable at the top of the build tree (where it has always been).
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
-set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/lib") 
-set(CMAKE_LIBRARY_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/lib")
 
-# Set the name of your project here
-project("Wannier2Sparse")
-
-# Set the version number of your project here (format is MAJOR.MINOR.PATCHLEVEL - e.g. 1.0.0)
-set(VERSION_MAJOR "1")
-set(VERSION_MINOR "0")
-set(VERSION_PATCH "0")
-set(VERSION ${VERSION_MAJOR}.${VERSION_MINOR}.${VERSION_PATCH})
-
-## Git (and its revision)
-#find_package(Git QUIET) # if we don't find git or FindGit.cmake is not on the system we ignore it.
-## GetGitRevisionDescription module to retreive branch and revision information from Git
-## Starting with Git 1.9 the module will be part of official cMake distribution, until then it has to be
-## part of the application
-## The Git module will trigger a reconfiguration for each pull that will bring a new revision on the local repository
-#set (VCS_REVISION "-1")
-#if(GIT_FOUND)
- #   include(GetGitRevisionDescription)
- #   get_git_head_revision(GIT_REFSPEC GIT_SHA1)
-#    message(STATUS "GIT branch ${GIT_REFSPEC}")
-#    message(STATUS "GIT revision ${GIT_SHA1}")
-#    set (VCS_REVISION ${GIT_SHA1})
-#endif()
-
-# This line finds the boost lib and headers. 
-#set(Boost_NO_BOOST_CMAKE ON) #  Don't do a find_package in config mode before searching for a regular boost install.
-#find_package(Boost COMPONENTS unit_test_framework program_options REQUIRED)
-
-# This sets the include directory for the reference project. This is the -I flag in gcc.
-# All the includes should be in this variable To add new directories to the include path,
-# just add them in this list (after a space), or add an include_directories statement in a
-# subdirectory's CMakeLists.
-include_directories(
-    ${PROJECT_SOURCE_DIR}/include
-    ${PROJECT_BINARY_DIR}/include   # add the binary tree to the search path so that we will find Version.h
-    /usr/include/eigen3/
-#    ${Boost_INCLUDE_DIRS}
-)
-
+# ---------------------------------------------------------------------------
+# Eigen3 dependency
+#
+# Preferred: a real Eigen3Config.cmake (gives the Eigen3::Eigen imported target,
+# which propagates downstream via find_dependency).  Fallback: a plain include
+# directory (-DEIGEN_DIR=... or the usual system path) with a warning that an
+# installed wannier2sparse package will not be able to re-find Eigen.
+# ---------------------------------------------------------------------------
+find_package(Eigen3 3.3 NO_MODULE QUIET)
+if(TARGET Eigen3::Eigen)
+    set(W2SP_EIGEN_TARGET Eigen3::Eigen)
+    set(W2SP_EIGEN_FROM_CONFIG TRUE)
+    message(STATUS "Found Eigen3 via config: ${Eigen3_DIR}")
+else()
+    set(W2SP_EIGEN_FROM_CONFIG FALSE)
+    find_path(EIGEN_DIR
+        NAMES signature_of_eigen3_matrix_library
+        HINTS /usr/include/eigen3 /usr/local/include/eigen3
+        DOC "Path to the Eigen3 headers (the directory containing the Eigen/ folder)")
+    if(NOT EIGEN_DIR)
+        message(FATAL_ERROR "Eigen3 not found. Install libeigen3-dev or pass -DEIGEN_DIR=/path/to/eigen3")
+    endif()
+    add_library(w2sp_eigen INTERFACE)
+    target_include_directories(w2sp_eigen INTERFACE $<BUILD_INTERFACE:${EIGEN_DIR}>)
+    install(TARGETS w2sp_eigen EXPORT wannier2sparseTargets)
+    set(W2SP_EIGEN_TARGET w2sp_eigen)
+    message(WARNING
+        "Eigen3Config.cmake not found; using the headers at '${EIGEN_DIR}' for this "
+        "build only. An installed wannier2sparse package will not be able to "
+        "find_dependency(Eigen3); consumers must provide Eigen themselves.")
+endif()
 
 enable_testing()
-add_subdirectory(include)
+
 add_subdirectory(src)
-#add_subdirectory(doc)
-add_subdirectory(test)
-add_subdirectory(samples)
+if(W2SP_BUILD_TESTS)
+    add_subdirectory(test)
+endif()
 
-#
-# SYSTEM PACKAGING (RPM, TGZ, ...)
-# _____________________________________________________________________________
+# ---------------------------------------------------------------------------
+# CMake config-package so downstream projects can do
+#   find_package(wannier2sparse CONFIG REQUIRED)
+#   target_link_libraries(app PRIVATE wannier2sparse::wannierlib)
+# ---------------------------------------------------------------------------
+install(EXPORT wannier2sparseTargets
+        FILE wannier2sparseTargets.cmake
+        NAMESPACE wannier2sparse::
+        DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/wannier2sparse)
 
-#include(CPackConfig)
+configure_package_config_file(
+    ${CMAKE_CURRENT_SOURCE_DIR}/cmake/wannier2sparseConfig.cmake.in
+    ${CMAKE_CURRENT_BINARY_DIR}/wannier2sparseConfig.cmake
+    INSTALL_DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/wannier2sparse)
 
-#
-# CMAKE PACKAGING (for other CMake projects to use this one easily)
-# _____________________________________________________________________________
+write_basic_package_version_file(
+    ${CMAKE_CURRENT_BINARY_DIR}/wannier2sparseConfigVersion.cmake
+    VERSION ${PROJECT_VERSION}
+    COMPATIBILITY SameMajorVersion)
 
-#include(PackageConfigurator)
-
-# REFERENCE PROJECT CMAKELISTS.TXT
-#
-# @author  bvonhall
-
-cmake_minimum_required(VERSION 2.8.12)
-set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} ${CMAKE_CURRENT_SOURCE_DIR}/cmake)
-
-#enable_testing() # needed on top-level CMakeLists.txt
-
-# Target doc definition
-# The challenge here is that the sub projects must all define a custom target but with different names to avoid
-# conflicts. We also want to be able to issue "make doc" from the top dir while being able to issue "make doc"
-# in the subdirs *when* we compile only a subproject.
-# We define as well a function AddDocTarget in cmake/DoxygenTarget.cmake
-#add_custom_target(doc) # DEPENDS docProjA docProjB) Note: with CMake 3.X the DEPENDS would work
-#ADD_DEPENDENCIES(doc docProjA docProjB)
-
-
+install(FILES
+    ${CMAKE_CURRENT_BINARY_DIR}/wannier2sparseConfig.cmake
+    ${CMAKE_CURRENT_BINARY_DIR}/wannier2sparseConfigVersion.cmake
+    DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/wannier2sparse)

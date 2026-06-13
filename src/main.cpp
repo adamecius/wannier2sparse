@@ -1,48 +1,97 @@
-#include <deque>
 #include <string>
+#include <fstream>
 #include <iostream>
+#include <cctype>
 
+#include "w2sp_arguments.hpp"
 #include "tbmodel.hpp"
 #include "hopping_list.hpp"
 
 using namespace std;
 
-int main( int argc, char* argv[]){
-
-deque< string > arguments(argv,argv+argc);
-const string program_name = arguments[0]; arguments.pop_front();  
-
-if( arguments.empty() )
+static bool file_exists(const string& path)
 {
-    cerr<<"ERROR: The program: "<<program_name <<" should be called with at least one argument (LABEL). "<<endl;
-    return -1;
+    ifstream f(path.c_str());
+    return f.good();
 }
 
-const string  label = arguments[0]; arguments.pop_front();  
-cout<<"Using "<<label<<" as the system's identification label"<<endl
-    <<"This label will be used to detect the label.xyz, label_hr.dat, and label.win files"<<endl;
-
-array<int, 3> cellDim={1,1,1};
-for(int i = 0 ; i < 3 ; i++ )
+// Build the requested operator as a (primitive-cell) hopping_list, dispatching
+// the operator name to the matching tbmodel builder.  Returns false for a name
+// the parser accepted but this build cannot produce (should not happen, since
+// the parser validates against the same operator set).
+static bool build_operator(tbmodel& model, const string& op, hopping_list& out)
 {
-    assert( !arguments.empty() );
-    cellDim[i] = stoi(arguments[0]); arguments.pop_front();  
+    if (op == "VX") { out = model.createHoppingCurrents_list(0); return true; }
+    if (op == "VY") { out = model.createHoppingCurrents_list(1); return true; }
+    if (op == "VZ") { out = model.createHoppingCurrents_list(2); return true; }
+
+    if (op == "SX") { out = model.createHoppingSpinDensity_list('x'); return true; }
+    if (op == "SY") { out = model.createHoppingSpinDensity_list('y'); return true; }
+    if (op == "SZ") { out = model.createHoppingSpinDensity_list('z'); return true; }
+
+    if (op.size() == 4 && op[0] == 'V' && op[2] == 'S')
+    {
+        const int dir = (op[1] == 'X') ? 0 : (op[1] == 'Y') ? 1 : (op[1] == 'Z') ? 2 : -1;
+        const char sdir = static_cast<char>(std::tolower(static_cast<unsigned char>(op[3])));
+        if (dir >= 0 && (sdir == 'x' || sdir == 'y' || sdir == 'z'))
+        {
+            out = model.createHoppingSpinCurrents_list(dir, sdir);
+            return true;
+        }
+    }
+    return false;
 }
 
-tbmodel model;
+int main(int argc, char* argv[])
+{
+    W2SP_arguments args;
+    switch (args.parse(argc, argv))
+    {
+        case W2SP_arguments::EXIT_OK:    return 0;  // help / version / list-operators
+        case W2SP_arguments::EXIT_ERROR: return 1;  // bad arguments
+        case W2SP_arguments::PROCEED:    break;
+    }
 
-model.readOrbitalPositions(label+".xyz");
-model.readUnitCell(label+".uc");
-model.readWannierModel(label+"_hr.dat");    
+    const string f_uc  = args.label + ".uc";
+    const string f_xyz = args.label + ".xyz";
+    const string f_hr  = args.label + "_hr.dat";
 
-std::cout<<"Creating the supercell ("<<cellDim[0]<<","<<cellDim[1]<<","<<cellDim[2]<<")"<<std::endl;
-save_hopping_list_as_csr(label+".HAM.CSR"  , wrap_in_supercell(cellDim, model.hl) );
-save_hopping_list_as_csr(label+".VX.CSR"   , wrap_in_supercell(cellDim, model.createHoppingCurrents_list(0)) );
-save_hopping_list_as_csr(label+".VYSZ.CSR" , wrap_in_supercell(cellDim, model.createHoppingSpinCurrents_list(1,'z')) );
-save_hopping_list_as_csr(label+".SX.CSR"   , wrap_in_supercell(cellDim, model.createHoppingSpinDensity_list('x')) );
-save_hopping_list_as_csr(label+".SY.CSR"   , wrap_in_supercell(cellDim, model.createHoppingSpinDensity_list('y')) );
-save_hopping_list_as_csr(label+".SZ.CSR"   , wrap_in_supercell(cellDim, model.createHoppingSpinDensity_list('z')) ); 
-std::cout<<"Supercells created successfully"<<std::endl;
+    bool missing = false;
+    for (const string& f : {f_uc, f_xyz, f_hr})
+        if (!file_exists(f))
+        {
+            cerr << args.program_name << ": error: required input file '" << f << "' not found\n";
+            missing = true;
+        }
+    if (missing) return 1;
 
-cout<<"The programa finished"<<std::endl;
-return 0;}
+    cout << "Using " << args.label << " as the system's identification label\n";
+
+    tbmodel model;
+    model.readOrbitalPositions(f_xyz);
+    model.readUnitCell(f_uc);
+    model.readWannierModel(f_hr);
+
+    const string prefix = args.output_dir + "/" + args.label;
+
+    cout << "Creating the supercell (" << args.cellDim[0] << ","
+         << args.cellDim[1] << "," << args.cellDim[2] << ")\n";
+
+    cout << "Writing Hamiltonian -> " << prefix << ".HAM.CSR\n";
+    save_supercell_as_csr(args.cellDim, model.hl, prefix + ".HAM.CSR");
+
+    for (const auto& op : args.operators)
+    {
+        hopping_list h;
+        if (!build_operator(model, op, h))
+        {
+            cerr << args.program_name << ": error: operator '" << op << "' is not supported by this build\n";
+            return 1;
+        }
+        cout << "Writing operator " << op << " -> " << prefix << "." << op << ".CSR\n";
+        save_supercell_as_csr(args.cellDim, h, prefix + "." + op + ".CSR");
+    }
+
+    cout << "Supercells created successfully\n";
+    return 0;
+}
