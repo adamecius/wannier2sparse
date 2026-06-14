@@ -1,3 +1,11 @@
+/**
+ * @file local_operators.hpp
+ * @brief Local (on-site) orbital angular momentum generators and projection parsing.
+ *
+ * The orbital angular momentum operators are built symbolically in the complex
+ * \f$|l,m\rangle\f$ basis and rotated to the Wannier90 real-harmonic ordering. Pure
+ * s, p, and d shells are supported; hybrids and incomplete shells are rejected.
+ */
 #ifndef LOCAL_OPERATORS_HPP
 #define LOCAL_OPERATORS_HPP
 
@@ -9,15 +17,21 @@
 #include <Eigen/Dense>
 
 /**
- * Real-basis orbital angular momentum Lx, Ly, Lz (units ħ) for a complete shell
- * of angular momentum l. l=0 (s) gives the trivial L=0; l=1 (p) and l=2 (d) are
- * the non-trivial cases (see docs/conventions.md sec 5). Built symbolically from
- * L± in the |l,m> basis,
- * rotated to the W90 real-harmonic order via C (never transcribed); callers/tests
- * assert L=L†, [Lx,Ly]=iLz, Tr=0, eig(Lz)={-1,0,1}/{-2..2}.
+ * @brief Real-basis orbital angular momentum \f$L_x,L_y,L_z\f$ (units \f$\hbar\f$)
+ *        for a complete shell of angular momentum l.
+ *
+ * l=0 (s) gives the trivial L=0; l=1 (p) and l=2 (d) are the non-trivial cases.
+ * The matrices are built symbolically from \f$L_\pm\f$ in the \f$|l,m\rangle\f$
+ * basis and rotated to the W90 real-harmonic order via C. Callers/tests assert
+ * \f$L=L^\dagger\f$, \f$[L_x,L_y]=iL_z\f$, \f$\mathrm{Tr}\,L=0\f$, and integer
+ * eigenvalues of \f$L_z\f$.
  *
  * W90 real-harmonic order (parameters.F90 / projections.tex):
- *   p: pz, px, py            d: dz2, dxz, dyz, dx2-y2, dxy
+ *   - p: pz, px, py
+ *   - d: dz2, dxz, dyz, dx2-y2, dxy
+ *
+ * @param l angular momentum (0, 1, or 2)
+ * @return array of three \f$2l+1\f$ x \f$2l+1\f$ complex matrices
  */
 inline std::array<Eigen::MatrixXcd, 3> shell_L(int l)
 {
@@ -61,10 +75,16 @@ inline std::array<Eigen::MatrixXcd, 3> shell_L(int l)
     return { C.adjoint()*Lx*C, C.adjoint()*Ly*C, C.adjoint()*Lz*C };
 }
 
-// Parse a .win "begin projections ... end projections" block into the list of
-// shell angular momenta (0 for s, 1 for p, 2 for d), in projector-column order.
-// Throws a std::runtime_error naming the offending token on anything that is not
-// a complete pure s/p/d shell (hybrids, incomplete shells, f, ...).
+/**
+ * @brief Parse a `.win` "begin projections ... end projections" block.
+ *
+ * Returns the list of shell angular momenta (0 for s, 1 for p, 2 for d), in
+ * projector-column order. Throws std::runtime_error on anything that is not a
+ * complete pure s/p/d shell (hybrids, incomplete shells, f, ...).
+ *
+ * @param winfile path to `.win`
+ * @return vector of angular momenta
+ */
 std::vector<int> parse_projection_shells(const std::string& winfile);
 
 #endif

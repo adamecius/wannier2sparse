@@ -1,3 +1,12 @@
+/**
+ * @file checks.hpp
+ * @brief Self-verification invariants for exported operators.
+ *
+ * Each check returns a pass/fail result plus a numeric residual. They operate on an
+ * assembled operator's hopping_list O(R) (gauge- and supercell-independent) or on
+ * the local generators. The check accompanies the operator as a sidecar; it never
+ * alters the CSR.
+ */
 #ifndef CHECKS_HPP
 #define CHECKS_HPP
 
@@ -12,21 +21,27 @@
 #include "hopping_list.hpp"
 #include "local_operators.hpp"
 
-// Self-verification invariants (Plan 10A). Each returns PASS/FAIL + a numeric
-// residual; they operate on an assembled operator's hopping_list O(R) (gauge-
-// and supercell-independent) or on the local generators. The check accompanies
-// the operator as a sidecar; it never alters the CSR.
+/**
+ * @brief Result of a single self-check.
+ */
 struct check_result
 {
-    std::string name;
-    bool        pass;
-    double      residual;
-    std::string detail;
+    std::string name;     ///< check name
+    bool        pass;     ///< true if the residual is within tolerance
+    double      residual; ///< numerical residual
+    std::string detail;   ///< human-readable description
 };
 
+/**
+ * @brief Self-verification invariants.
+ */
 namespace checks {
 
-// Reduce a hopping_list to a map (R,i,j) -> summed value.
+/**
+ * @brief Reduce a hopping_list to a map keyed by (R, i, j).
+ * @param hl hopping list
+ * @return map from \f$(R_x,R_y,R_z,i,j)\f$ to summed complex value
+ */
 inline std::map<std::array<int,5>, std::complex<double> > reduce(const hopping_list& hl)
 {
     std::map<std::array<int,5>, std::complex<double> > m;
@@ -38,7 +53,12 @@ inline std::map<std::array<int,5>, std::complex<double> > reduce(const hopping_l
     return m;
 }
 
-// O_ij(R) == conj(O_ji(-R)).
+/**
+ * @brief Hermiticity check: \f$O_{ij}(R) = O_{ji}(-R)^*\f$.
+ * @param hl hopping list
+ * @param tol tolerance (default 1e-8)
+ * @return check result
+ */
 inline check_result hermiticity(const hopping_list& hl, double tol = 1e-8)
 {
     const auto m = reduce(hl);
@@ -54,8 +74,17 @@ inline check_result hermiticity(const hopping_list& hl, double tol = 1e-8)
     return { "hermiticity", res <= tol, res, "max|O_ij(R)-conj(O_ji(-R))|" };
 }
 
-// Trace of O(R=0). For spin/L this should vanish (traceless); pass reflects that
-// when expect_traceless is set, otherwise it is informational (always PASS).
+/**
+ * @brief Trace of \f$O(R=0)\f$.
+ *
+ * For spin/orbital operators the trace should vanish (traceless). When
+ * expect_traceless is false the check is informational (always passes).
+ *
+ * @param hl hopping list
+ * @param expect_traceless true for spin/orbital operators
+ * @param tol tolerance (default 1e-8)
+ * @return check result
+ */
 inline check_result trace_rule(const hopping_list& hl, bool expect_traceless, double tol = 1e-8)
 {
     const auto m = reduce(hl);
@@ -68,8 +97,16 @@ inline check_result trace_rule(const hopping_list& hl, bool expect_traceless, do
              "Tr O(R=0)" + std::string(expect_traceless ? " (expect 0)" : "") };
 }
 
-// Minimum-image aliasing (shared logic lives in hopping_list.hpp, also used by
-// the expansion guard in Plan 10D).
+/**
+ * @brief Minimum-image aliasing check.
+ *
+ * Detects distinct R vectors that collapse onto the same supercell bond under
+ * periodic wrapping. Empty result means the supercell is safe.
+ *
+ * @param hl hopping list
+ * @param cellDim supercell dimensions
+ * @return check result
+ */
 inline check_result aliasing(const hopping_list& hl, const hopping_list::cellID_t& cellDim)
 {
     const auto c = ::aliasing_collisions(hl, cellDim);
@@ -77,7 +114,14 @@ inline check_result aliasing(const hopping_list& hl, const hopping_list::cellID_
              c.empty() ? "no minimum-image collisions" : (std::to_string(c.size()) + " colliding pairs: " + c.front()) };
 }
 
-// Generator algebra: [Lx,Ly]=iLz and eig(Lz)={-l..l} for p,d; same for spin σ/2.
+/**
+ * @brief Orbital angular-momentum algebra check.
+ *
+ * Verifies \f$[L_x,L_y]=iL_z\f$ and integer eigenvalues \f$\{-l..l\}\f$ for p and d
+ * shells.
+ *
+ * @return check result
+ */
 inline check_result orbital_algebra()
 {
     const std::complex<double> I(0,1);
@@ -92,6 +136,13 @@ inline check_result orbital_algebra()
     return { "algebra", res <= 1e-9, res, "[Lx,Ly]=iLz and eig(Lz)={-l..l} (p,d)" };
 }
 
+/**
+ * @brief Spin-\f$\frac12\f$ algebra check.
+ *
+ * Verifies \f$[S_x,S_y]=iS_z\f$ and eigenvalues \f$\pm\frac12\f$.
+ *
+ * @return check result
+ */
 inline check_result spin_algebra()
 {
     typedef std::complex<double> cd; const cd I(0,1);
@@ -105,6 +156,11 @@ inline check_result spin_algebra()
     return { "algebra", res <= 1e-9, res, "[Sx,Sy]=iSz and eig(Sz)={-1/2,1/2}" };
 }
 
+/**
+ * @brief Write a collection of check results to a sidecar file.
+ * @param rs vector of results
+ * @param filename output path
+ */
 inline void write_report(const std::vector<check_result>& rs, const std::string& filename)
 {
     std::ofstream f(filename.c_str());
