@@ -235,27 +235,36 @@ class tbmodel
         auto dens = this->createHoppingDensity_list();
         for( auto& elem: dens.hoppings )
         {
+            auto cell  = get<0>(elem);
             auto edge  = get<2>(elem);
             auto value =&get<1>(elem);
+            // Spin density is an ON-SITE operator: only the R=0 block carries it.
+            // createHoppingDensity_list keeps the full Hamiltonian support with the
+            // non-onsite VALUES merely zeroed; without this guard the s1==s2 branch
+            // below would re-fill those zeroed same-spin bonds with +/-1, so e.g. a
+            // collinear chain's S_z would inherit its +/-gamma hops and stop being
+            // involutory (eigenvalues escape +/-1). Restrict the assignment to R=0.
+            if( cell != hopping_list::cellID_t({0,0,0}) ) { *value = 0.0; continue; }
             auto s1=id2spin[edge[0]], s2= id2spin[edge[1]];
-            if( s1!= 0 && s2!= 0 )
+            // Pauli entry: assign the matching component, otherwise ZERO. (Previously
+            // a non-matching entry kept its leftover density value -- e.g. S_x on a
+            // collinear model retained the onsite +/-J_ex on the diagonal, which is
+            // garbage, not sigma_x.) Spinless orbitals (s=0) contribute nothing.
+            const bool spinful = ( s1 != 0 && s2 != 0 );
             switch(dir)
             {
-                case 'x':
-                if( s1 + s2 == 0  )
-                    *value=1.0;
-                break;
-
-                case 'y':
-                if( s1 + s2 == 0  )
-                    *value= hopping_list::value_t(0.0,s2);
-                break;
-
-                case 'z':
-                if( s1 == s2 )
-                    *value= s2;
+                case 'x':   // sigma_x : 1 on up<->down off-diagonal
+                    *value = ( spinful && s1 + s2 == 0 ) ? hopping_list::value_t(1.0, 0.0)
+                                                         : hopping_list::value_t(0.0, 0.0);
                     break;
-
+                case 'y':   // sigma_y : -i / +i on up<->down off-diagonal
+                    *value = ( spinful && s1 + s2 == 0 ) ? hopping_list::value_t(0.0, (double)s2)
+                                                         : hopping_list::value_t(0.0, 0.0);
+                    break;
+                case 'z':   // sigma_z : +/-1 on the spin-diagonal
+                    *value = ( spinful && s1 == s2 ) ? hopping_list::value_t((double)s2, 0.0)
+                                                     : hopping_list::value_t(0.0, 0.0);
+                    break;
                 default:
                     *value = 0 ;
             }
