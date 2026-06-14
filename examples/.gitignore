@@ -1,0 +1,6 @@
+# Regenerable / large — keep the repo light (smallest footprint).
+models/tb/
+models/wannier/
+*.CSR
+__pycache__/
+*.pyc

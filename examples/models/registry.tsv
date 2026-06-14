@@ -1,0 +1,8 @@
+name	class	dims	ws	edge	kind	demo	blurb
+chain1d	tb	400 1 1	off	2.0	metal	dos	1D chain, E=2t cos k
+graphene	tb	80 80 1	off	3.0	dirac	dos	honeycomb, Dirac point at E=0
+cubic	tb	18 18 18	off	6.0	metal	dos	simple cubic, 3D van Hove
+haldane	tb	80 80 1	off	3.0	gapped	dos	graphene + complex NNN, gap ~3sqrt3 t2
+silicon	wannier	8 8 8	on	-5.82..19.44	gapped	dos	real W90 Si (sp3, SOC-free); WS min-image; N>=7 (range 3)
+copper	wannier	7 7 7	on	-	-	orbital_L	Cu:d complete shell -> local Lz ladder {-2..2}; N>=7 (range 3)
+iron	wannier	13 13 13	on	4.43..61.77	-	spin	BCC Fe + SOC; exact spin; N>=13 (range 6); DOS infeasible (>1GB CSR)

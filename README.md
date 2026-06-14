@@ -204,6 +204,25 @@ underlying methodology see the project articles (npj Computational Materials
 
 ---
 
+## Runnable examples
+
+The [`examples/`](examples/README.md) directory has self-contained, self-validating
+demos: each builds a canonical tight-binding model, expands it with
+`wannier2sparse`, and plots the **density of states** from the resulting CSR via
+the Kernel Polynomial Method (the same sparse-mat-vec technique LinQT uses
+downstream). `examples/validate.py` checks each DOS against its analytic spectrum.
+
+[![graphene DOS](examples/img/graphene_dos.png)](examples/README.md)
+
+```bash
+cd examples && bash run.sh graphene 80     # -> models/tb/graphene/graphene_dos.png
+```
+
+See [`examples/README.md`](examples/README.md) for the full gallery (chain1d,
+graphene, cubic, haldane) and the real-Wannier (DFT) workflow.
+
+---
+
 ## Notes on performance
 
 The supercell expansion (`save_supercell_as_csr`) writes the CSR directly from a
