@@ -1,3 +1,10 @@
+/**
+ * @file gauge.hpp
+ * @brief Gauge data and exact operators from Wannier90 / pw2wannier90 output.
+ *
+ * All conventions are documented and source-cited in docs/conventions.md; this
+ * code follows that doc verbatim.
+ */
 #ifndef GAUGE_HPP
 #define GAUGE_HPP
 
@@ -9,52 +16,97 @@
 #include "hopping_list.hpp"
 
 /**
- * Gauge data read from a Wannier90 / pw2wannier90 run, used to build exact
- * operators (Plan 7). All conventions are documented and source-cited in
- * docs/conventions.md; this code follows that doc verbatim.
+ * @brief Gauge data read from a Wannier90 / pw2wannier90 run, used to build exact
+ *        operators.
  *
- *   V(k)    = U_dis(k) * U(k)        (num_bands x num_wann), or U(k) if not disentangled
- *   O_W(k)  = V(k)^dagger O_B(k) V(k)   (num_wann x num_wann)
- *   O_W(R)  = (1/N_k) sum_k exp(-i 2pi k.R) O_W(k)     [same FT as W90 H(R)]
+ * The conventions are:
+ * \f[
+ *   V(k)    = U_{dis}(k) \, U(k)        \quad (\text{num_bands} \times \text{num_wann})
+ * \f]
+ * \f[
+ *   O_W(k)  = V(k)^\dagger \, O_B(k) \, V(k)
+ * \f]
+ * \f[
+ *   O_W(R)  = \frac{1}{N_k} \sum_k e^{-i 2\pi k\cdot R} O_W(k)
+ * \f]
+ * matching the Wannier90 Fourier transform convention.
  */
 struct gauge_data
 {
-    int num_bands = 0, num_wann = 0, num_kpts = 0;
-    bool disentangled = false;
+    int num_bands = 0, num_wann = 0, num_kpts = 0; ///< matrix/k-space dimensions
+    bool disentangled = false;                       ///< true if Udis is present
 
-    std::vector< std::array<double,3> >  kpt;   // fractional kpt_latt, size num_kpts
-    std::vector< Eigen::MatrixXcd >      U;      // per k: num_wann x num_wann
-    std::vector< Eigen::MatrixXcd >      Udis;   // per k: num_bands x num_wann (empty if not disentangled)
-    std::vector< std::array<Eigen::MatrixXcd,3> > Sb;  // per k: 3 Pauli components, num_bands x num_bands
+    std::vector< std::array<double,3> >  kpt;   ///< fractional k-point coordinates, size num_kpts
+    std::vector< Eigen::MatrixXcd >      U;      ///< per k: num_wann x num_wann
+    std::vector< Eigen::MatrixXcd >      Udis;   ///< per k: num_bands x num_wann (empty if not disentangled)
+    std::vector< std::array<Eigen::MatrixXcd,3> > Sb;  ///< per k: 3 Pauli components, num_bands x num_bands
 
-    // V(k) per the disentanglement convention (docs/conventions.md sec 2).
+    /**
+     * @brief Composite gauge matrix V(k).
+     * @param k k-point index
+     * @return Udis[k]*U[k] if disentangled, else U[k]
+     */
     Eigen::MatrixXcd V(int k) const { return disentangled ? (Udis[k] * U[k]) : U[k]; }
 };
 
-// Read <prefix>_u.mat, <prefix>_u_dis.mat (optional), <prefix>.spn (formatted).
-// Asserts per-k dimensional consistency. <prefix> is e.g. "/path/Fe".
+/**
+ * @brief Read `_u.mat`, `_u_dis.mat` (optional), and `.spn` files.
+ * @param prefix file prefix, e.g. "/path/Fe"
+ * @return populated gauge_data
+ */
 gauge_data read_gauge(const std::string& prefix);
 
-// Exact spin operator S_alpha(R) (alpha = 0,1,2 for x,y,z) as a hopping_list,
-// evaluated on the given set of R vectors (typically the H(R) WS set). Values
-// are in units of hbar/2 (bare Pauli; see docs/conventions.md sec 3).
+/**
+ * @brief Exact spin operator \f$S_\alpha(R)\f$ (alpha = 0,1,2 for x,y,z).
+ *
+ * Values are in units of \f$\hbar/2\f$ (bare Pauli). The operator is evaluated on
+ * the supplied R vectors, typically the Hamiltonian Wigner-Seitz set.
+ *
+ * @param g gauge data
+ * @param alpha spin component index (0=x, 1=y, 2=z)
+ * @param Rset set of R vectors
+ * @return hopping_list representation of the spin operator
+ */
 hopping_list exact_spin_operator(const gauge_data& g, int alpha,
                                  const std::vector<hopping_list::cellID_t>& Rset);
 
-// Projection overlaps A_{m,alpha}(k) from a .amn file: per k a num_bands x
-// num_proj matrix (docs/conventions.md sec 5 / additional).
+/**
+ * @brief Projection overlaps \f$A_{m,\alpha}(k)\f$ from a `.amn` file.
+ *
+ * Per k the matrix is num_bands x num_proj.
+ */
 struct amn_data
 {
-    int num_bands = 0, num_proj = 0, num_kpts = 0;
-    std::vector< Eigen::MatrixXcd > A;          // per k: num_bands x num_proj
+    int num_bands = 0, num_proj = 0, num_kpts = 0; ///< dimensions
+    std::vector< Eigen::MatrixXcd > A;             ///< per k: num_bands x num_proj
 };
+
+/**
+ * @brief Read a Wannier90 `.amn` file.
+ * @param amn_file path to `.amn`
+ * @return populated amn_data
+ */
 amn_data read_amn(const std::string& amn_file);
 
-// Orbital angular momentum L_alpha(R) via the projector route (Plan 8):
-//   C(k) = A(k)^dagger V(k),  L_W(k) = C(k)^dagger L_local^alpha C(k),
-//   L_alpha(R) = (1/N_k) sum_k exp(-i 2pi k.R) L_W(k)   [same FT as spin/H].
-// shell_ls is the per-shell angular momentum in projector-column order (from
-// parse_projection_shells); sum(2l+1) must equal num_proj. Units hbar.
+/**
+ * @brief Orbital angular momentum \f$L_\alpha(R)\f$ via the projector route.
+ *
+ * Computes
+ * \f[
+ *   C(k) = A(k)^\dagger V(k), \quad
+ *   L_W(k) = C(k)^\dagger L_{local}^\alpha C(k),
+ * \f]
+ * and Fourier transforms to real space. shell_ls gives the per-shell angular
+ * momentum in projector-column order; sum(2l+1) must equal num_proj. Units are
+ * \f$\hbar\f$.
+ *
+ * @param g gauge data
+ * @param a projection overlaps
+ * @param shell_ls per-shell angular momenta
+ * @param alpha component index (0=x, 1=y, 2=z)
+ * @param Rset set of R vectors
+ * @return hopping_list representation of L_alpha
+ */
 hopping_list orbital_L_operator(const gauge_data& g, const amn_data& a,
                                 const std::vector<int>& shell_ls, int alpha,
                                 const std::vector<hopping_list::cellID_t>& Rset);

@@ -1,13 +1,16 @@
 # wannier2sparse
 
 A command-line tool (part of the **LinQT** package) that expands a Wannier90
-tight-binding model into a supercell and exports the Hamiltonian and a set of
+`tight-binding model into a supercell and exports the Hamiltonian and a set of
 operators as sparse matrices in CSR format, ready for KPM / Chebyshev transport
 calculations.
 
 The connectivity is taken directly from the Wannier90 `_hr.dat` file (it is not
 searched geometrically): each non-zero `H_ij(R)` is replicated across the
-supercell and wrapped under periodic boundary conditions.
+supercell and wrapped under periodic boundary conditions. Operator conventions
+— Fourier-transform sign, `ndegen` normalization, spin units, and the
+Wigner-Seitz minimum-image correction — are documented in
+[`docs/conventions.md`](docs/conventions.md).
 
 ---
 
@@ -93,20 +96,32 @@ wannier2sparse LABEL N1 N2 N3 [OP ... | all] [options]
 
 | Argument | Description |
 |----------|-------------|
-| `LABEL`     | System label (see *Input files* below). |
+| `LABEL`     | System label. |
 | `N1 N2 N3`  | Supercell dimensions along each lattice vector (integers ≥ 1). |
 | `OP ...`    | Operators to generate, e.g. `VX SZ`. `all` generates every operator. If omitted, only the Hamiltonian is written. |
 
 | Option | Description |
 |--------|-------------|
 | `-o, --output-dir DIR` | Directory for the `.CSR` output (default: current dir). |
-| `-h, --help` | Show help and exit. |
-| `--list-operators` | List valid operator names and exit. |
-| `--version` | Show version and exit. |
+| `-p, --project DIR`    | Directory holding the input files (default: current dir). |
+| `--seed NAME`          | Seedname of the input files (default: `LABEL`). |
+| `--op-file NAME PATH`  | Ingest an external operator in `_hr.dat` format from `PATH` and write it as `<LABEL>.NAME.CSR`. Repeatable. |
+| `--spin-current V S`   | Write the derived spin current `J = 1/2 {V_V, S_S}` as `<LABEL>.JVSS.CSR` (`V,S ∈ {X,Y,Z}`). Repeatable. |
+| `--bounds`             | Write a physical descriptor (`.desc`) next to each CSR, including spectral bounds `[a,b]` for the Hamiltonian. |
+| `--exact-spin`         | Build exact spin operators from `<seed>.spn` + `<seed>_u.mat` via the gauge transform. |
+| `--orbital-L`          | Build orbital angular momentum from `<seed>.amn` + `<seed>_u.mat` + `<seed>.win` (pure p/d shells only). |
+| `--check [NAME]`       | Self-verify operators and write `<op>.check` sidecars (`NAME` = `hermiticity`, `sum_rules`, `algebra`, `aliasing`, `bounds`; default `all`). |
+| `-h, --help`           | Show help and exit. |
+| `--list-operators`     | List valid operator names and exit. |
+| `--version`            | Show version and exit. |
 
 Invalid input (unknown operator, non-integer or non-positive dimension, missing
 input file, too few arguments) prints a clear message and returns a non-zero
 exit code — the tool never aborts with an assertion.
+
+`LABEL.uc` and `LABEL.xyz` are only required when a velocity or spin operator is
+requested; a plain Hamiltonian (or an `--op-file` operator) needs only its
+`_hr.dat`.
 
 ### Examples
 
@@ -119,6 +134,9 @@ wannier2sparse graphene 50 50 1 VX VY SZ
 
 # Every operator, written to ./out
 wannier2sparse graphene 50 50 1 all -o out
+
+# Exact spin operators from Wannier90 gauge data
+wannier2sparse Fe 4 4 4 --exact-spin
 ```
 
 ---
@@ -133,19 +151,23 @@ wannier2sparse graphene 50 50 1 all -o out
 
 `all` expands to the full list above. Spin operators require a model whose
 orbital labels mark the spin channel (`_s+_` / `_s-_` in `LABEL.xyz`); for a
-spinless model they evaluate to zero.
+spinless model they evaluate to zero. Exact gauge-transform spin operators
+(`--exact-spin`) and orbital angular momentum (`--orbital-L`) are produced under
+their own flags.
 
 ---
 
 ## Input files
 
-For a given `LABEL`, the tool reads (all three are required):
+For a given `LABEL`, the tool reads:
 
-| File | Content |
-|------|---------|
-| `LABEL_hr.dat` | Wannier90 real-space Hamiltonian: rows `R1 R2 R3 i j Re Im`. |
-| `LABEL.uc`     | Three lines, each three floats: the unit-cell lattice vectors (Å). |
-| `LABEL.xyz`    | First line: number of orbitals. Then `label x y z` per orbital. |
+| File | Required | Content |
+|------|----------|---------|
+| `LABEL_hr.dat` | yes | Wannier90 real-space Hamiltonian: rows `R1 R2 R3 i j Re Im`. |
+| `LABEL.uc`     | for V/S operators | Three lines, each three floats: the unit-cell lattice vectors (Å). |
+| `LABEL.xyz`    | for V/S operators | First line: number of orbitals. Then `label x y z` per orbital. |
+| `LABEL_wsvec.dat` | no | Wigner-Seitz minimum-image correction from `use_ws_distance`. |
+| `LABEL.eig`    | no | Eigenvalues for exact spectral bounds with `--bounds`. |
 
 ## Output files
 
@@ -153,6 +175,8 @@ For a given `LABEL`, the tool reads (all three are required):
 |------|---------|
 | `LABEL.HAM.CSR` | Supercell Hamiltonian, sparse CSR. |
 | `LABEL.<OP>.CSR` | One file per requested operator. |
+| `LABEL.<OP>.desc` | Physical descriptor (with `--bounds`). |
+| `LABEL.<OP>.check` | Self-check report (with `--check`). |
 
 CSR text format (one matrix per file):
 
@@ -165,10 +189,25 @@ CSR text format (one matrix per file):
 
 ---
 
+## Physics background
+
+`wannier2sparse` sits at the boundary between Wannier interpolation and
+KPM/Chebyshev linear-response methods. The Hamiltonian `H(R)` is read in the
+Wannier90 real-space gauge, operators such as velocity `V = -i[H, r]` and spin
+`S` are built in the same real-space representation, and the supercell CSR
+output feeds kernel-polynomial evaluations of the Kubo–Greenwood / Bastin
+conductivity formulas. The Fourier-transform convention and spin/orbital-
+angular-momentum definitions used here are source-verified against Wannier90
+3.1.0 and Quantum ESPRESSO 7.2 and recorded in `docs/conventions.md`. For the
+underlying methodology see the project articles (npj Computational Materials
+`s41524…`, `TEGADPS.pdf`) and the Wannier90 user guide.
+
+---
+
 ## Notes on performance
 
 The supercell expansion (`save_supercell_as_csr`) writes the CSR directly from a
-single pass over the primitive hoppings — replicate + PBC-wrap into flat triplet
-arrays — instead of first building an intermediate string-keyed supercell
-container. For large supercells this uses roughly **3× less memory and runs ~3×
-faster** than the two-stage expansion, with byte-identical output.
+single pass over the primitive hoppings — replicate + PBC-wrap into flat arrays
+— instead of first building an intermediate string-keyed supercell container.
+For large supercells this uses roughly **3× less memory and runs ~3× faster**
+than the two-stage expansion, with byte-identical output.

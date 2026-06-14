@@ -1,17 +1,8 @@
-#ifndef W2SP_ARGUMENTS
-#define W2SP_ARGUMENTS
-
-#include <array>
-#include <string>
-#include <vector>
-#include <utility>
-#include <iostream>
-#include <cctype>
-
-/*
- * Command-line interface for wannier2sparse.
+/**
+ * @file w2sp_arguments.hpp
+ * @brief Command-line interface parser for wannier2sparse.
  *
- *   wannier2sparse LABEL N1 N2 N3 [OP ... | all] [-o DIR]
+ *   wannier2sparse LABEL N1 N2 N3 [OP ... | all] [options]
  *
  * LABEL      system label; the tool reads LABEL.uc, LABEL.xyz and LABEL_hr.dat.
  * N1 N2 N3   supercell dimensions along each lattice vector (integers >= 1).
@@ -23,52 +14,72 @@
  * operators below reflects exactly what this build of tbmodel can generate
  * (velocity, spin density and spin current; there is no torque operator here).
  */
+#ifndef W2SP_ARGUMENTS
+#define W2SP_ARGUMENTS
+
+#include <array>
+#include <string>
+#include <vector>
+#include <utility>
+#include <iostream>
+#include <cctype>
+
+/**
+ * @brief Command-line argument state and parser.
+ */
 class W2SP_arguments
 {
 public:
-    enum Status { PROCEED = 0, EXIT_OK = 1, EXIT_ERROR = 2 };
+    enum Status { PROCEED = 0, EXIT_OK = 1, EXIT_ERROR = 2 }; ///< parse() outcome
 
-    std::array<int, 3>       cellDim;
-    std::string              label;
-    std::string              output_dir;
-    std::string              project_dir;   // directory holding the input files (default: cwd)
-    std::string              seed;          // seedname of the input files (default: label)
-    std::vector<std::string> operators;
-    // External operators to ingest from _hr.dat-format files: (NAME, PATH).
-    // Each is expanded through the same engine and written as <prefix>.NAME.CSR.
+    std::array<int, 3>       cellDim;       ///< supercell dimensions
+    std::string              label;         ///< positional system label
+    std::string              output_dir;    ///< -o/--output-dir
+    std::string              project_dir;   ///< directory holding the input files (default: cwd)
+    std::string              seed;          ///< seedname of the input files (default: label)
+    std::vector<std::string> operators;     ///< explicitly requested operators
+    /**
+     * @brief External operators to ingest from _hr.dat-format files: (NAME, PATH).
+     *
+     * Each is expanded through the same engine and written as <prefix>.NAME.CSR.
+     */
     std::vector<std::pair<std::string, std::string> > op_files;
-    // Derived spin currents J = 1/2{V,S}: (velocity axis, spin axis), each in
-    // {X,Y,Z}. Written as <prefix>.J<V>S<S>.CSR.
+    /**
+     * @brief Derived spin currents J = 1/2{V,S}: (velocity axis, spin axis).
+     *
+     * Each axis is in {X,Y,Z}. Written as <prefix>.J<V>S<S>.CSR.
+     */
     std::vector<std::pair<char, char> > spin_currents;
-    // Emit a physical descriptor sidecar (.desc) next to each CSR, including
-    // spectral bounds (a,b) for the Hamiltonian.
-    bool                     emit_descriptor;
-    // Build the exact spin operator from .spn + _u.mat (+ _u_dis.mat) via the
-    // gauge transform, instead of the label-based spin (Plan 7).
-    bool                     exact_spin;
-    // Build orbital angular momentum L from .amn + _u.mat + .win projections via
-    // the projector route (Plan 8; pure p/d shells only).
-    bool                     orbital_l;
-    // Self-verification: "" = off; "all" or a specific check name (hermiticity,
-    // sum_rules, algebra, aliasing, bounds). Writes <op>.check sidecars (Plan 10A).
-    std::string              check;
-    std::string              program_name;
+    bool                     emit_descriptor; ///< --bounds: write .desc sidecars
+    bool                     exact_spin;      ///< --exact-spin: use gauge transform
+    bool                     orbital_l;       ///< --orbital-L: build orbital angular momentum
+    std::string              check;           ///< --check selector
+    std::string              program_name;    ///< argv[0]
 
+    /**
+     * @brief Default constructor.
+     */
     W2SP_arguments()
         : cellDim({{1, 1, 1}}), output_dir("."), emit_descriptor(false),
           exact_spin(false), orbital_l(false), program_name("wannier2sparse") {}
 
-    // Resolved input file stem: <project_dir>/<seed>, where seed defaults to the
-    // positional LABEL and project_dir defaults to the current directory. Input
-    // files are <prefix>_hr.dat, <prefix>.uc, <prefix>.xyz.
+    /**
+     * @brief Resolved input file stem: <project_dir>/<seed>.
+     * @return input prefix
+     *
+     * seed defaults to the positional LABEL and project_dir defaults to the current
+     * directory. Input files are <prefix>_hr.dat, <prefix>.uc, <prefix>.xyz.
+     */
     std::string input_prefix() const
     {
         const std::string base = seed.empty() ? label : seed;
         return project_dir.empty() ? base : (project_dir + "/" + base);
     }
 
-    // The operators this tool knows how to build (HAM is always written and is
-    // not part of this list).
+    /**
+     * @brief Operators this tool knows how to build (HAM is always written).
+     * @return reference to the operator list
+     */
     static const std::vector<std::string>& available_operators()
     {
         static const std::vector<std::string> ops = {
@@ -81,6 +92,11 @@ public:
         return ops;
     }
 
+    /**
+     * @brief Validate an operator code.
+     * @param op operator string
+     * @return true if op is in available_operators()
+     */
     static bool is_valid_operator(const std::string& op)
     {
         for (const auto& a : available_operators())
@@ -88,7 +104,11 @@ public:
         return false;
     }
 
-    // Normalize a single-letter cartesian axis to upper case, or '?' if invalid.
+    /**
+     * @brief Normalize a single-letter cartesian axis.
+     * @param s input string
+     * @return upper-case axis 'X'/'Y'/'Z', or '?' if invalid
+     */
     static char to_axis(const std::string& s)
     {
         if (s.size() != 1) return '?';
@@ -96,6 +116,12 @@ public:
         return (c == 'X' || c == 'Y' || c == 'Z') ? c : '?';
     }
 
+    /**
+     * @brief Parse command-line arguments into this object.
+     * @param argc argument count
+     * @param argv argument vector
+     * @return PROCEED, EXIT_OK, or EXIT_ERROR
+     */
     Status parse(int argc, char* argv[])
     {
         if (argc > 0) program_name = argv[0];

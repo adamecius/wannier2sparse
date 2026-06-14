@@ -1,3 +1,10 @@
+/**
+ * @file main.cpp
+ * @brief Command-line driver for wannier2sparse.
+ *
+ * Parses arguments, loads the Wannier90 model, builds requested operators, applies
+ * optional Wigner-Seitz corrections and self-checks, and writes CSR output.
+ */
 #include <string>
 #include <fstream>
 #include <iostream>
@@ -16,12 +23,25 @@
 
 using namespace std;
 
+/**
+ * @brief Check whether a file exists and is readable.
+ * @param path file path
+ * @return true if the file can be opened
+ */
 static bool file_exists(const string& path)
 {
     ifstream f(path.c_str());
     return f.good();
 }
 
+/**
+ * @brief Build a descriptor with the given fields.
+ * @param observable observable name
+ * @param component component code (e.g. "X", "XSZ")
+ * @param units physical units
+ * @param provenance how the operator was produced
+ * @return populated OperatorDescriptor
+ */
 static OperatorDescriptor describe(const string& observable, const string& component,
                                    const string& units, const string& provenance)
 {
@@ -31,7 +51,11 @@ static OperatorDescriptor describe(const string& observable, const string& compo
     return d;
 }
 
-// Metadata for a generated operator code (VX, SZ, VXSZ, ...).
+/**
+ * @brief Descriptor for a generated operator code (VX, SZ, VXSZ, ...).
+ * @param code operator code
+ * @return populated OperatorDescriptor
+ */
 static OperatorDescriptor op_descriptor(const string& code)
 {
     if (code.size() == 2 && code[0] == 'V')
@@ -43,10 +67,16 @@ static OperatorDescriptor op_descriptor(const string& code)
     return describe("operator", code, "", "generated");
 }
 
-// Build the requested operator as a (primitive-cell) hopping_list, dispatching
-// the operator name to the matching tbmodel builder.  Returns false for a name
-// the parser accepted but this build cannot produce (should not happen, since
-// the parser validates against the same operator set).
+/**
+ * @brief Build a requested operator as a primitive-cell hopping_list.
+ * @param model tight-binding model
+ * @param op operator code
+ * @param out output hopping_list
+ * @return true on success
+ *
+ * Dispatches the operator name to the matching tbmodel builder. Returns false for a
+ * name the parser accepted but this build cannot produce.
+ */
 static bool build_operator(tbmodel& model, const string& op, hopping_list& out)
 {
     if (op == "VX") { out = model.createHoppingCurrents_list(0); return true; }
@@ -70,10 +100,17 @@ static bool build_operator(tbmodel& model, const string& op, hopping_list& out)
     return false;
 }
 
-enum op_kind { K_GENERIC, K_HAM, K_SPIN, K_ORBITAL };
+enum op_kind { K_GENERIC, K_HAM, K_SPIN, K_ORBITAL }; ///< operator category for checks
 
-// Plan 10A: evaluate the requested self-checks on an assembled operator and write
-// a <prefix>.<op>.check sidecar. Never touches the CSR.
+/**
+ * @brief Evaluate requested self-checks on an assembled operator.
+ * @param args parsed CLI arguments
+ * @param opname operator name for the sidecar filename
+ * @param hl assembled operator in hopping_list form
+ * @param kind operator category
+ *
+ * Writes a <prefix>.<op>.check sidecar. Never touches the CSR.
+ */
 static void run_checks(const W2SP_arguments& args, const string& opname,
                        const hopping_list& hl, op_kind kind)
 {
@@ -97,6 +134,12 @@ static void run_checks(const W2SP_arguments& args, const string& opname,
         checks::write_report(rs, args.output_dir + "/" + args.label + "." + opname + ".check");
 }
 
+/**
+ * @brief Main entry point.
+ * @param argc argument count
+ * @param argv argument vector
+ * @return exit code
+ */
 int main(int argc, char* argv[])
 {
     W2SP_arguments args;

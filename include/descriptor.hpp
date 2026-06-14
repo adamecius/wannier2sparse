@@ -1,3 +1,7 @@
+/**
+ * @file descriptor.hpp
+ * @brief Physical metadata sidecar and spectral-bound estimation.
+ */
 #ifndef DESCRIPTOR
 #define DESCRIPTOR
 
@@ -12,7 +16,7 @@
 #include "sparse_matrix.hpp"
 
 /**
- * Physical metadata "sidecar" for an exported operator.
+ * @brief Physical metadata "sidecar" for an exported operator.
  *
  * Invariant: this descriptor lives BESIDE the numerical CSR and never enters the
  * Chebyshev/KPM recursion. It carries provenance and, for the Hamiltonian, the
@@ -20,16 +24,21 @@
  */
 struct OperatorDescriptor
 {
-    std::string observable;   // "hamiltonian", "velocity", "spin", "spin_current", ...
-    std::string component;    // "", "X", "Z", "XSZ", ...
-    std::string units;        // "eV", "eV*Angstrom", "hbar/2", "dimensionless", ...
-    std::string provenance;   // how it was produced
-    bool        has_bounds;   // (a,b) meaningful (typically only for H)
-    double      a, b;         // spectral_min, spectral_max
+    std::string observable;   ///< "hamiltonian", "velocity", "spin", "spin_current", ...
+    std::string component;    ///< "", "X", "Z", "XSZ", ...
+    std::string units;        ///< "eV", "eV*Angstrom", "hbar/2", "dimensionless", ...
+    std::string provenance;   ///< how it was produced
+    bool        has_bounds;   ///< (a,b) meaningful (typically only for H)
+    double      a, b;         ///< spectral_min, spectral_max
 
     OperatorDescriptor() : has_bounds(false), a(0.0), b(0.0) {}
 };
 
+/**
+ * @brief Write a descriptor to a `.desc` text file.
+ * @param d descriptor to write
+ * @param filename output path
+ */
 inline void write_descriptor(const OperatorDescriptor& d, const std::string& filename)
 {
     std::ofstream f(filename.c_str());
@@ -47,11 +56,18 @@ inline void write_descriptor(const OperatorDescriptor& d, const std::string& fil
 }
 
 /**
- * Estimate the extremal eigenvalues (a = min, b = max) of a Hermitian sparse
- * operator with `iters` Lanczos steps. The extreme Ritz values of the small
- * tridiagonal matrix converge to the spectral edges, which is exactly what KPM
- * needs to rescale H. The start vector is fixed-seed random so the result is
- * deterministic and not accidentally orthogonal to an edge eigenvector.
+ * @brief Estimate the extremal eigenvalues (a = min, b = max) of a Hermitian sparse
+ *        operator with a few Lanczos steps.
+ *
+ * The extreme Ritz values of the small tridiagonal matrix converge to the spectral
+ * edges, which is exactly what KPM needs to rescale H. The start vector is a fixed-
+ * seed random vector so the result is deterministic and not accidentally orthogonal
+ * to an edge eigenvector.
+ *
+ * @param H Hermitian sparse matrix
+ * @param a output: estimated minimum eigenvalue
+ * @param b output: estimated maximum eigenvalue
+ * @param iters number of Lanczos iterations (default 40)
  */
 inline void spectral_bounds(const SparseMatrix_t& H, double& a, double& b, int iters = 40)
 {
