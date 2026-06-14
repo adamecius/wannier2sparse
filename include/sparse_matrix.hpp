@@ -4,7 +4,9 @@
  *
  * All CSR output and internal sparse algebra is built on Eigen. The matrix is
  * stored row-major so the CSR text layout (values / column indices / row pointers)
- * matches the file format directly.
+ * matches the file format directly. The FULL Hermitian matrix is written (both
+ * triangles); the consumer folds it as H = 0.5*(M + M^dagger), an identity for a
+ * Hermitian operator.
  */
 #ifndef SPARSE_MATRIX
 #define SPARSE_MATRIX

@@ -161,6 +161,12 @@ return sc_hl;
 };
 
 
+// Storage convention: the FULL Hermitian matrix is written (both triangles),
+// 0-based column indices, 0-based row pointers. The consumer (LinQT) folds it as
+// H = 0.5*(M + M^dagger), which is the identity for a Hermitian M and also cleans
+// float-level asymmetry. NOTE: do not switch to upper-triangle output here without
+// a storage tag in the .desc sidecar (see --storage spec); a bare triangle is
+// indistinguishable from a non-Hermitian full matrix and silently halves hoppings.
 void save_supercell_as_csr(const hopping_list::cellID_t& cellDim,
                            const hopping_list& hl, string output_filename)
 {
@@ -259,6 +265,12 @@ SparseMatrix_t supercell_matrix(const hopping_list::cellID_t& cellDim,
 }
 
 
+// Storage convention: the FULL Hermitian matrix is written (both triangles),
+// 0-based column indices, 0-based row pointers. The consumer (LinQT) folds it as
+// H = 0.5*(M + M^dagger), which is the identity for a Hermitian M and also cleans
+// float-level asymmetry. NOTE: do not switch to upper-triangle output here without
+// a storage tag in the .desc sidecar (see --storage spec); a bare triangle is
+// indistinguishable from a non-Hermitian full matrix and silently halves hoppings.
 void write_csr(const SparseMatrix_t& output, string output_filename)
 {
     const long dim = output.rows();
