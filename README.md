@@ -187,6 +187,12 @@ CSR text format (one matrix per file):
 <row pointer> ...                  # dim+1 row pointers
 ```
 
+The FULL Hermitian matrix is stored (both triangles). The consumer reconstructs
+H = ½(M + M†); for a Hermitian operator this returns M unchanged. A future
+upper-triangle mode (flagged storage=upper in the .desc sidecar) would store
+col ≥ row only and be reconstructed as U + U† − diag(U); it is enabled only when
+the operator passes the Hermiticity check (`--check hermiticity`).
+
 ---
 
 ## Physics background
