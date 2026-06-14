@@ -20,6 +20,7 @@
 #include <limits>
 #include <cassert>
 #include <functional>
+#include <cmath>
 #include<iostream>
 #include<limits>
 #include<algorithm>
@@ -221,56 +222,110 @@ class tbmodel
     }
 
     /**
-     * @brief Spin-density operator along a Cartesian axis.
-     * @param dir spin direction: 'x', 'y', or 'z'
+     * @brief Orbital-base label = the orbital label with the sup/sdw spin tag removed.
+     */
+    static std::string orbital_base_label(std::string s)
+    {
+        for( const std::string tag : { std::string("_s+_"), std::string("_s-_") } )
+        {
+            auto p = s.find(tag);
+            if( p != std::string::npos ) { s.erase(p, tag.size()); break; }
+        }
+        return s;
+    }
+
+    /**
+     * @brief Pair each spinful orbital with its opposite-spin partner (sup/sdw).
+     *
+     * Spin-operator SUPPORT is built from the spin doubling, not from H's onsite graph.
+     * Pairing convention: group by POSITION (primary); orbitals that share a site are
+     * disambiguated by the orbital-base label (the label with the _s+_/_s-_ tag removed).
+     * Each (position, base-label) group must hold exactly one up (_s+_) and one down
+     * (_s-_); otherwise assert -- the model must label its spin channels unambiguously.
+     * Spinless orbitals get no partner. The SOC `.spn` path (exact_spin_operator) is
+     * untouched and unaffected.
+     * @return map orbital index -> opposite-spin partner index (paired orbitals only)
+     */
+    map<int,int> map_id2partner()
+    {
+        auto id2spin = this->map_id2spin();
+        auto q = [](double x){ return (long long) std::llround(x * 1e6); }; // quantize position
+        map< tuple<long long,long long,long long,std::string>, pair<int,int> > grp; // key -> (up_id, down_id)
+        int id = 0;
+        for( auto& orb : orbPos_list )
+        {
+            int sz = id2spin.count(id) ? id2spin[id] : 0;
+            if( sz != 0 )
+            {
+                auto& p = get<1>(orb);
+                auto key = make_tuple( q(p[0]), q(p[1]), q(p[2]), orbital_base_label(get<0>(orb)) );
+                if( grp.find(key) == grp.end() ) grp[key] = std::make_pair(-1,-1);
+                int& slot = ( sz > 0 ) ? grp[key].first : grp[key].second;
+                assert( slot == -1 &&
+                    "spin pairing ambiguous: >1 orbital with the same (position, base-label, spin); use distinct orbital labels" );
+                slot = id;
+            }
+            id++;
+        }
+        map<int,int> partner;
+        for( auto& kv : grp )
+        {
+            int up = kv.second.first, dn = kv.second.second;
+            assert( up != -1 && dn != -1 &&
+                "spin pairing incomplete: a (position, base-label) group lacks an up or down partner" );
+            partner[up] = dn;
+            partner[dn] = up;
+        }
+        return partner;
+    }
+
+    /**
+     * @brief Spin-density operator S_dir (dir = 'x','y','z'), Pauli convention (eig +/-1).
      * @return hopping_list representation
      *
-     * Reuses the density support and replaces the values by the requested Pauli
-     * matrix in the spin-resolved basis. Returns zero for a spinless model.
+     * The support is built from the SPIN DOUBLING (map_id2partner), NOT from the
+     * Hamiltonian's onsite graph. This makes S_alpha a correct Pauli operator even when
+     * the onsite block carries same-spin orbital bonds (e.g. graphene's intra-cell
+     * sublattice bond, which the old density-support reuse turned into spurious S_z
+     * off-diagonals with eigenvalues outside +/-1). Only onsite (R=0) 2x2 blocks per
+     * spin pair are emitted:
+     *     S_z = diag(+1,-1),  S_x: (up,down)=(down,up)=1,  S_y: (up,down)=-i,(down,up)=+i.
+     * Spinless / unpaired orbitals contribute nothing (zero rows/cols).
      */
     hopping_list createHoppingSpinDensity_list(const char dir)
     {
         std::cout<<"Creating the spin Density matrix S"<<dir<<std::endl;
         auto id2spin = this->map_id2spin();
-        auto dens = this->createHoppingDensity_list();
-        for( auto& elem: dens.hoppings )
+        auto partner = this->map_id2partner();
+
+        hopping_list out = this->hl;   // inherit basis size + cell bounds
+        out.hoppings.clear();          // support is rebuilt from the spin doubling
+        const hopping_list::cellID_t R0 = {0,0,0};
+        typedef hopping_list::value_t cplx;
+        typedef hopping_list::edge_t  edge;
+
+        for( auto& kv : partner )
         {
-            auto cell  = get<0>(elem);
-            auto edge  = get<2>(elem);
-            auto value =&get<1>(elem);
-            // Spin density is an ON-SITE operator: only the R=0 block carries it.
-            // createHoppingDensity_list keeps the full Hamiltonian support with the
-            // non-onsite VALUES merely zeroed; without this guard the s1==s2 branch
-            // below would re-fill those zeroed same-spin bonds with +/-1, so e.g. a
-            // collinear chain's S_z would inherit its +/-gamma hops and stop being
-            // involutory (eigenvalues escape +/-1). Restrict the assignment to R=0.
-            if( cell != hopping_list::cellID_t({0,0,0}) ) { *value = 0.0; continue; }
-            auto s1=id2spin[edge[0]], s2= id2spin[edge[1]];
-            // Pauli entry: assign the matching component, otherwise ZERO. (Previously
-            // a non-matching entry kept its leftover density value -- e.g. S_x on a
-            // collinear model retained the onsite +/-J_ex on the diagonal, which is
-            // garbage, not sigma_x.) Spinless orbitals (s=0) contribute nothing.
-            const bool spinful = ( s1 != 0 && s2 != 0 );
+            const int i  = kv.first;       // this orbital
+            const int j  = kv.second;      // its opposite-spin partner
+            const int si = id2spin[i];     // +1 (up) or -1 (down)
             switch(dir)
             {
-                case 'x':   // sigma_x : 1 on up<->down off-diagonal
-                    *value = ( spinful && s1 + s2 == 0 ) ? hopping_list::value_t(1.0, 0.0)
-                                                         : hopping_list::value_t(0.0, 0.0);
+                case 'z':  // sigma_z : +/-1 on the diagonal
+                    out.hoppings.push_back( make_tuple(R0, cplx((double)si, 0.0), edge({i,i})) );
                     break;
-                case 'y':   // sigma_y : -i / +i on up<->down off-diagonal
-                    *value = ( spinful && s1 + s2 == 0 ) ? hopping_list::value_t(0.0, (double)s2)
-                                                         : hopping_list::value_t(0.0, 0.0);
+                case 'x':  // sigma_x : 1 on the up<->down off-diagonal (both directions)
+                    out.hoppings.push_back( make_tuple(R0, cplx(1.0, 0.0), edge({i,j})) );
                     break;
-                case 'z':   // sigma_z : +/-1 on the spin-diagonal
-                    *value = ( spinful && s1 == s2 ) ? hopping_list::value_t((double)s2, 0.0)
-                                                     : hopping_list::value_t(0.0, 0.0);
+                case 'y':  // sigma_y : (up,down)=-i, (down,up)=+i  -> value (0,-si)
+                    out.hoppings.push_back( make_tuple(R0, cplx(0.0, (double)(-si)), edge({i,j})) );
                     break;
                 default:
-                    *value = 0 ;
+                    break;
             }
         }
         std::cout<<"Sucess."<<std::endl;
-        return dens;
+        return out;
     }
 
 
