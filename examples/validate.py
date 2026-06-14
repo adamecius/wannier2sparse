@@ -11,10 +11,11 @@ w2s = IU.module_from_spec(spec); spec.loader.exec_module(w2s)
 
 # model -> (csr_relpath, analytic_edge, kind)   kind: 'metal'|'dirac'|'gapped'
 CASES = {
-    "chain1d":  ("tb/chain1d/chain1d.HAM.CSR",   2.0, "metal"),
-    "graphene": ("tb/graphene/graphene.HAM.CSR", 3.0, "dirac"),
-    "cubic":    ("tb/cubic/cubic.HAM.CSR",       6.0, "metal"),
-    "haldane":  ("tb/haldane/haldane.HAM.CSR",   3.0, "gapped"),
+    "chain1d":     ("tb/chain1d/chain1d.HAM.CSR",         2.0, "metal"),
+    "chain1d_mag": ("tb/chain1d_mag/chain1d_mag.HAM.CSR", 2.1, "metal"),  # exchange-split [-2.1,2.1]
+    "graphene":    ("tb/graphene/graphene.HAM.CSR",       3.0, "dirac"),
+    "cubic":       ("tb/cubic/cubic.HAM.CSR",             6.0, "metal"),
+    "haldane":     ("tb/haldane/haldane.HAM.CSR",         3.0, "gapped"),
 }
 PAD = 1.05            # KPM rescaling pad used by w2s_dos.kpm_dos
 EDGE_TOL = 0.15       # relative tolerance on the band edge

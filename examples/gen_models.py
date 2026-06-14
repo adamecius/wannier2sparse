@@ -51,5 +51,16 @@ def haldane(t1=-1.0, t2=0.15, phi=math.pi/2):
     write("haldane", 2, rpts, h,
           "1.5 0.8660254 0\n1.5 -0.8660254 0\n0 0 10\n", "2\nCA 0 0 0\nCB 1 0 0\n")
 
+# --- magnetized 1D chain: 1 site, 2 spin orbitals, NN t=-1, on-site exchange -J_ex sigma_z.
+#     sup/sdw convention: orbital labels carry _s+_ (up) / _s-_ (down) so the spin
+#     operators (S_x,S_y,S_z) are built from the spin doubling. Orbital 1 = up, 2 = down;
+#     bands E_sigma(k) = -2 cos(k) -/+ J_ex  ->  spectrum [-2-J_ex, 2+J_ex]. -----------
+def magnetic_chain(Jex=0.1):
+    h = [((0,0,0),1,1,-Jex,0), ((0,0,0),2,2,Jex,0),
+         ((-1,0,0),1,1,-1,0),  ((-1,0,0),2,2,-1,0),
+         ((1,0,0),1,1,-1,0),   ((1,0,0),2,2,-1,0)]
+    write("chain1d_mag", 2, {(-1,0,0),(0,0,0),(1,0,0)}, h,
+          "1 0 0\n0 1 0\n0 0 1\n", "2\nA_s+_ 0 0 0\nA_s-_ 0 0 0\n")
+
 if __name__ == "__main__":
-    chain1d(); graphene(); cubic(); haldane()
+    chain1d(); graphene(); cubic(); haldane(); magnetic_chain()

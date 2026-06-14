@@ -13,7 +13,7 @@ mkdir -p "$HERE/models/tb"
 ( cd "$HERE/models/tb" && python3 "$HERE/gen_models.py" )  # writes all models under models/tb (idempotent)
 cd "$HERE/models/tb/$MODEL"
 case "$MODEL" in
-  chain1d) DIMS="$N 1 1" ;;                                                  # 1D
+  chain1d|chain1d_mag) DIMS="$N 1 1" ;;                                      # 1D (incl. spin-doubled)
   cubic)   M=$(python3 -c "print(max(4,int($N**0.5)))"); DIMS="$M $M $M" ;;  # 3D, modest
   *)       DIMS="$N $N 1" ;;                                                 # 2D
 esac
