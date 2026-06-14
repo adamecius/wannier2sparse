@@ -9,7 +9,6 @@ include(GNUInstallDirs)
 include(CMakePackageConfigHelpers)
 
 option(W2SP_BUILD_TESTS "Build the wannier2sparse test suite" ON)
-option(W2SP_WBERRI_CHECK "Build the optional WannierBerri independent cross-check (Plan 10C)" OFF)
 
 # Keep the executable at the top of the build tree (where it has always been).
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
