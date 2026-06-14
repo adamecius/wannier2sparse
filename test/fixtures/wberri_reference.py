@@ -7,14 +7,22 @@ reference files per (fixture, operator) that are versioned in the repo. The C++
 tests (test/wberri_matrix_crosscheck.cpp, test/wberri_texture_crosscheck.cpp)
 only READ those .ref files and never import WannierBerri.
 
-Usage:
-    pip install wannierberri
-    # the fixture must include <seed>.chk (collect it in gen_fixture.sh) plus the
-    # usual _hr.dat / _u.mat / _u_dis.mat / .eig and .spn (spin) / .amn (orbital).
-    python3 wberri_reference.py <prefix> <spin|orbital> <out_dir>
-    #   -> writes <out_dir>/<seed>_<S|L>_matrix.ref  and  <seed>_<S|L>_texture.ref
+Confirmed against WannierBerri 26.4.6 (v26 pipeline: Wannier90data.from_w90_files
+-> System_w90; see docs/conventions.md sec 7 for the exact calls).
 
-This is normally invoked via `make regen-wberri-golden`.
+Usage:
+    pip install wannierberri fortio      # fortio reads the binary .chk
+    # <prefix> must point at a dir holding <seed>.chk + <seed>.mmn + .eig + .spn
+    # (+ _u.mat for the k-points). The .chk/.mmn live in the gen working dir
+    # (e.g. /tmp/fixrun.*), not the slim /tmp/fix/<seed>. The .spn here is FORMATTED.
+    W2SP_WS_CONVENTION=II python3 wberri_reference.py <prefix> spin <out_dir>
+    #   -> writes <out_dir>/<seed>_S_matrix.ref  and  <seed>_S_texture.ref
+    # Optional: W2SP_MATRIX_KSTRIDE (default 8) subsets the matrix golden's k;
+    #           W2SP_DEGENERACY_TOL (default 1e-5; use 1e-3 -- see sec 7) for texture.
+
+This is normally invoked via `make regen-wberri-golden`. Orbital ('L') is NOT
+emitted (the WannierBerri<->projector-route correspondence is unconfirmed; the
+script raises rather than fabricate -- sec 7 Deferred).
 
 ------------------------------------------------------------------------------
 .ref formats (must stay in lockstep with the two C++ tests)
@@ -22,7 +30,8 @@ This is normally invoked via `make regen-wberri-golden`.
   <seed>_<op>_matrix.ref   (Test 1 -- Wannier-gauge matrix element)
     line 1 (header):  seed operator n_k num_wann WS_convention wberri_version
     then one row per (ik, m, n, alpha):  ik m n alpha Re Im
-      m,n are 0-based Wannier indices; alpha in {0,1,2} = x,y,z.
+      m,n are 0-based Wannier indices; alpha in {0,1,2} = x,y,z. n_k is the FULL
+      grid size; the rows may be a stride subset of k (ik says which).
 
   <seed>_<op>_texture.ref  (Test 2 -- band-resolved expectation)
     line 1 (header):  seed operator n_k num_wann WS_convention wberri_version degeneracy_tol
@@ -32,19 +41,13 @@ This is normally invoked via `make regen-wberri-golden`.
       trace -- band-by-band is ill-defined inside a multiplet, e.g. Fe+SOC).
 
 ------------------------------------------------------------------------------
-TWO things that are deliberately NOT assumed here (flag, do not fabricate):
-
-1. WS CONVENTION (docs/conventions.md sec 6/7). WannierBerri and wannier2sparse
-   must use the SAME use_ws_distance convention or O_W(k) differs by trivial
-   per-orbital phases. This script writes the convention token it used into every
-   header; the C++ tests assert it matches their own. The matching value is a
-   build-time fact of how <seed>_hr.dat was made -- set W2SP_WS_CONVENTION to
-   match and VERIFY against the installed WannierBerri, not from memory.
-
-2. The VERSION-SPECIFIC real-space-matrix attribute names on the WannierBerri
-   System object (Ham_R / SS_R / iRvec / degeneracies). These have changed across
-   releases. We introspect and raise a clear, actionable error if the expected
-   attribute is absent, rather than emit unverified numbers.
+WS CONVENTION (docs/conventions.md sec 6/7): WannierBerri and wannier2sparse must
+use the SAME use_ws_distance convention or O_W(k) differs by trivial per-orbital
+phases. This script writes W2SP_WS_CONVENTION into every header; the C++ tests
+assert it matches their own. Empirically (Fe) the plain inverse FT of WannierBerri's
+Ham_R reproduces the w2s H(k) eigenvalues to ~4e-5 (the _hr.dat text precision),
+confirming the conventions agree -- but the token is still a build-time fact: set
+it to match how <seed>_hr.dat was made.
 """
 import os
 import sys
@@ -69,49 +72,24 @@ def _kpts_from_umat(prefix):
     return np.array(kpts), nw
 
 
-def _real_space_matrices(system, which):
-    """Return (iRvec, weights, Ham_R, Op_R) from a WannierBerri System, introspecting
-    the version-specific attribute names. Op_R is the spin (SS_R) or orbital matrix
-    in the Wannier gauge, shape (num_wann, num_wann, nRvec, 3). Raises with guidance
-    if an expected attribute is missing -- we never guess silently."""
+def _build_system(prefix, which):
+    """Build a WannierBerri System from <prefix>.{chk,eig,spn} via the v26 pipeline
+    (Wannier90data.from_w90_files -> System_w90). Returns (iRvec, Ham_R, Op_R, nw)
+    with Ham_R shaped (nR, nw, nw) and Op_R (nR, nw, nw, 3); Op_R is the spin SS_R.
+    Verified end-to-end against wannierberri 26.4.6 + fortio 0.4 (.chk reader) on
+    the Fe SOC fixture: the plain inverse FT below reproduces the w2s H(k)
+    eigenvalues to ~4e-5 (the _hr.dat text precision), i.e. same R-set / ndegen /
+    convention. .chk is binary (needs `pip install fortio`); .spn here is FORMATTED
+    (the fixture was written with spn_formatted=.true.), so it is flagged as such.
+
+    Orbital L is deliberately NOT emitted: WannierBerri's orbital operator has no
+    guaranteed one-to-one with the w2s projector route (C(k)=A(k)^dag V(k),
+    L_local) -- raises rather than emit an unverified golden (conventions sec 7)."""
     import numpy as np
+    import wannierberri as wb
+    import wannierberri.w90files as w90f
 
-    def first_attr(obj, names, label):
-        for n in names:
-            if hasattr(obj, n):
-                return getattr(obj, n)
-            getter = "get_R_mat"
-            if hasattr(obj, getter):
-                try:
-                    return getattr(obj, getter)(n)
-                except Exception:
-                    pass
-        raise SystemExit(
-            "wberri_reference: could not find the '%s' real-space matrix on this "
-            "WannierBerri System (tried %s). The attribute/API is version-specific; "
-            "confirm it against the installed WannierBerri source and update "
-            "_real_space_matrices(). Do NOT guess -- a wrong matrix yields a "
-            "wrong-but-plausible golden." % (label, names))
-
-    iRvec = np.asarray(first_attr(system, ["iRvec"], "iRvec"))
-    Ham_R = np.asarray(first_attr(system, ["Ham_R", "HH_R"], "Ham_R"))
-
-    # WannierBerri may fold the WS degeneracy into the stored matrices already, or
-    # expose it separately. If a degeneracy vector exists, divide it out so our
-    # explicit FT below does not double-count.
-    weights = np.ones(iRvec.shape[0])
-    for n in ("Ndegen", "ndegen", "_NKFFT_recommended"):
-        if hasattr(system, n):
-            cand = np.asarray(getattr(system, n))
-            if cand.ndim == 1 and cand.shape[0] == iRvec.shape[0]:
-                weights = 1.0 / cand
-                break
-
-    if which == "spin":
-        Op_R = np.asarray(first_attr(system, ["SS_R"], "SS_R (spin)"))
-    else:
-        Op_R = np.asarray(first_attr(
-            system, ["OAM_R", "AA_R"], "orbital-L (Wannier gauge)"))
+    if which != "spin":
         raise SystemExit(
             "wberri_reference: orbital-L in the Wannier gauge has no guaranteed "
             "one-to-one with the wannier2sparse projector route (C(k)=A(k)^dag V(k), "
@@ -119,22 +97,37 @@ def _real_space_matrices(system, which):
             "definition before trusting an L golden (docs/conventions.md sec 7, "
             "Deferred). Refusing to emit an unverified orbital golden.")
 
-    # Normalize Ham_R/Op_R orientation to (nw, nw, nR[, 3]).
-    nw = Ham_R.shape[0] if Ham_R.shape[0] == Ham_R.shape[1] else Ham_R.shape[1]
-    if Ham_R.shape[0] != nw:                            # stored as (nR, nw, nw)
-        Ham_R = np.moveaxis(Ham_R, 0, -1)
-    if Op_R.shape[0] != nw:
-        Op_R = np.moveaxis(Op_R, 0, -3 if Op_R.ndim == 4 else -1)
-    return iRvec, weights, Ham_R, Op_R, nw
+    try:
+        wandata = w90f.Wannier90data.from_w90_files(
+            prefix, files=("chk", "eig", "spn"), formatted=("spn",))
+    except ModuleNotFoundError as e:
+        if "fortio" in str(e):
+            raise SystemExit("wberri_reference: reading the binary .chk needs fortio "
+                             "-> pip install fortio")
+        raise
+    # spin=True makes System_w90 build SS_R; symmetrize=False (no symmetrizer here).
+    system = wb.system.System_w90(wandata, symmetrize=False, spin=True)
+    Ham_R = np.asarray(system.get_R_mat("Ham"))         # (nR, nw, nw)
+    Op_R = np.asarray(system.get_R_mat("SS"))           # (nR, nw, nw, 3)
+    iRvec = np.asarray(system.rvec.iRvec)               # (nR, 3)
+    nw = int(system.num_wann)
+    if Ham_R.shape != (iRvec.shape[0], nw, nw):
+        raise SystemExit("wberri_reference: unexpected Ham_R shape %s (expected "
+                         "(%d,%d,%d)); the API may differ in this WannierBerri "
+                         "version -- confirm before trusting the golden."
+                         % (Ham_R.shape, iRvec.shape[0], nw, nw))
+    return iRvec, Ham_R, Op_R, nw
 
 
-def _ft(kpt, iRvec, weights, mat):
-    """O(k) = sum_R w_R e^{+i 2pi k.R} O(R)  (inverse interpolation, docs sec 1)."""
+def _ft(kpt, iRvec, mat):
+    """O(k) = sum_R e^{+i 2pi k.R} O(R)  (inverse interpolation, docs sec 1).
+
+    No 1/ndegen weight: WannierBerri folds the WS treatment into its stored
+    real-space matrices, so the plain sum is the correct inverse (confirmed by the
+    H(k) eigenvalue match above). mat is (nR, nw, nw) or (nR, nw, nw, 3)."""
     import numpy as np
     phase = np.exp(2j * np.pi * (iRvec @ np.asarray(kpt)))   # (nR,)
-    wphase = weights * phase
-    # mat: (nw, nw, nR[, 3]) -> contract over R.
-    return np.tensordot(mat, wphase, axes=([2], [0]))
+    return np.tensordot(phase, mat, axes=([0], [0]))
 
 
 def main():
@@ -157,28 +150,28 @@ def main():
         sys.exit("wannierberri / numpy not installed: pip install wannierberri")
     wb_version = getattr(wb, "__version__", "unknown")
 
-    # System from the W90 .chk (+ .eig, and .spn for spin). Match the WS convention
-    # used to build <seed>_hr.dat -- verify the keyword against the installed version.
-    sys_w90 = wb.system.System_w90(prefix, spin=(which == "spin"),
-                                   transl_inv=False)
+    iRvec, Ham_R, Op_R, nw = _build_system(prefix, which)
     kpts, nw_umat = _kpts_from_umat(prefix)
-    iRvec, weights, Ham_R, Op_R, nw = _real_space_matrices(sys_w90, which)
     if nw != nw_umat:
         sys.exit("num_wann mismatch: u.mat says %d, System says %d" % (nw_umat, nw))
     nk = kpts.shape[0]
     os.makedirs(out_dir, exist_ok=True)
 
     # ---- Test 1 golden: Wannier-gauge matrix element O_W(k) ------------------
+    # The full mp_grid matrix is large (nk*3*nw^2 rows); store a BZ-spread stride
+    # subset (W2SP_MATRIX_KSTRIDE, default 8) -- element-by-element on a sample of k
+    # is already the strict check. The k-index is the first column, so the C++ test
+    # reconstructs exactly the k present. n_k in the header is the FULL grid size.
+    kstride = int(os.environ.get("W2SP_MATRIX_KSTRIDE", "8"))
     mpath = os.path.join(out_dir, "%s_%s_matrix.ref" % (seed, op_tag))
     with open(mpath, "w") as f:
         f.write("%s %s %d %d %s %s\n" % (seed, op_tag, nk, nw, ws_conv, wb_version))
-        for ik in range(nk):
-            Ok = np.stack([_ft(kpts[ik], iRvec, weights, Op_R[..., a])
-                           for a in range(3)], axis=0)        # (3, nw, nw)
+        for ik in range(0, nk, kstride):
+            Ok = _ft(kpts[ik], iRvec, Op_R)                  # (nw, nw, 3)
             for a in range(3):
                 for m in range(nw):
                     for n in range(nw):
-                        v = Ok[a, m, n]
+                        v = Ok[m, n, a]
                         f.write("%d %d %d %d %.16e %.16e\n"
                                 % (ik, m, n, a, v.real, v.imag))
 
@@ -189,10 +182,10 @@ def main():
         f.write("%s %s %d %d %s %s %.3e\n"
                 % (seed, op_tag, nk, nw, ws_conv, wb_version, deg_tol))
         for ik in range(nk):
-            Hk = _ft(kpts[ik], iRvec, weights, Ham_R)
+            Hk = _ft(kpts[ik], iRvec, Ham_R)
             Hk = 0.5 * (Hk + Hk.conj().T)
             evals, evecs = np.linalg.eigh(Hk)
-            Ok = [_ft(kpts[ik], iRvec, weights, Op_R[..., a]) for a in range(3)]
+            Ok = _ft(kpts[ik], iRvec, Op_R)                  # (nw, nw, 3)
             block, b = [0] * nw, 0
             for i in range(1, nw):
                 if evals[i] - evals[i - 1] >= deg_tol:
@@ -201,7 +194,7 @@ def main():
             for ibnd in range(nw):
                 psi = evecs[:, ibnd]
                 for a in range(3):
-                    val = np.vdot(psi, Ok[a] @ psi).real
+                    val = np.vdot(psi, Ok[:, :, a] @ psi).real
                     f.write("%d %d %d %d %.16e\n" % (ik, ibnd, a, block[ibnd], val))
 
     sys.stderr.write("wrote %s\nwrote %s\n" % (mpath, tpath))

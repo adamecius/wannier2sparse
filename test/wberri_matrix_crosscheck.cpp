@@ -72,11 +72,17 @@ static bool run_one(const string& prefix, const string& op_tag, bool spin, bool&
                                       << h_ws << "' != expected '" << expected_ws()
                                       << "' (docs/conventions.md sec 6/7)\n"; ok = false; return true; }
 
-    vector<array<Eigen::MatrixXcd,3> > refk(nk);
-    for (int k = 0; k < nk; ++k) for (int a = 0; a < 3; ++a)
-        refk[k][a] = Eigen::MatrixXcd::Zero(nw, nw);
+    // The golden may store a stride subset of k; index by ik (sparse) and
+    // reconstruct/compare exactly the k-points present.
+    map<int, array<Eigen::MatrixXcd,3> > refk;
     { int ik, m, n, a; double re, im;
-      while (f >> ik >> m >> n >> a >> re >> im) refk[ik][a](m,n) = complex<double>(re, im); }
+      while (f >> ik >> m >> n >> a >> re >> im)
+      { auto it = refk.find(ik);
+        if (it == refk.end())
+        { array<Eigen::MatrixXcd,3> z = {Eigen::MatrixXcd::Zero(nw,nw),
+              Eigen::MatrixXcd::Zero(nw,nw), Eigen::MatrixXcd::Zero(nw,nw)};
+          it = refk.emplace(ik, z).first; }
+        it->second[a](m,n) = complex<double>(re, im); } }
 
     gauge_data g = read_gauge(prefix);
     assert(g.num_wann == nw); assert(g.num_kpts == nk);
@@ -101,14 +107,15 @@ static bool run_one(const string& prefix, const string& op_tag, bool spin, bool&
         const hopping_list O = spin ? exact_spin_operator(g, alpha, Rset)
                                     : orbital_L_operator(g, A, shells, alpha, Rset);
         map<cellID_t, Eigen::MatrixXcd> Om; for (const auto& R : Rset) Om[R] = at(O, R, nw);
-        for (int k = 0; k < nk; ++k)
+        for (const auto& kv : refk)
         {
+            const int k = kv.first;
             Eigen::MatrixXcd recon = Eigen::MatrixXcd::Zero(nw, nw);
             for (size_t b = 0; b < Rset.size(); ++b)
             { const auto& R = Rset[b];
               const double kr = g.kpt[k][0]*R[0]+g.kpt[k][1]*R[1]+g.kpt[k][2]*R[2];
               recon += wgt[b]*std::exp(complex<double>(0.0,+twopi*kr))*Om[R]; }
-            maxerr = std::max(maxerr, (recon - refk[k][alpha]).cwiseAbs().maxCoeff());
+            maxerr = std::max(maxerr, (recon - kv.second[alpha]).cwiseAbs().maxCoeff());
         }
     }
     cout << "wberri_matrix_crosscheck[" << seed << "_" << op_tag

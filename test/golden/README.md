@@ -10,18 +10,30 @@ The two C++ tests read these files and **never import WannierBerri**:
 | `<seed>_<op>_matrix.ref`        | `wberri_matrix_crosscheck`        | Wannier-gauge `O_W(k)` element-by-element (tight, ~1e-6) |
 | `<seed>_<op>_texture.ref`       | `wberri_texture_crosscheck`       | band texture `⟨O_α⟩_{nk}` (looser, ~1e-5, degeneracy subspace-trace) |
 
-`<op>` is `S` (spin, e.g. Fe) or `L` (orbital, e.g. copper / BaTiO3).
+`<op>` is `S` (spin) or `L` (orbital). **Committed so far:** `Fe_S_matrix.ref` +
+`Fe_S_texture.ref`, generated with WannierBerri 26.4.6 and hand-validated against
+the w2s reconstruction (matrix `2.6e-9`, texture `1.3e-3`; see §7). The orbital
+`L` goldens are **not** committed yet — the WannierBerri↔projector-route
+correspondence is unconfirmed, so the generator refuses to emit them (§7 Deferred);
+the C++ `L` tests run the moment an `L` golden appears.
+
+`Fe_S_matrix.ref` stores a **stride-8 k-subset** (`W2SP_MATRIX_KSTRIDE`) to keep
+the file small; the `ik` column says which k each row is, and the test reconstructs
+exactly those. `Fe_S_texture.ref` covers the full grid.
 
 ## Regenerating (needs WannierBerri + a fixture with `<seed>.chk`)
 
 ```sh
-pip install wannierberri
-export W2SP_WS_CONVENTION=...   # MUST match how <seed>_hr.dat was built (see §6/§7)
-make regen-wberri-golden        # CMake custom target -> writes the .ref files here
+pip install wannierberri fortio   # fortio reads the binary .chk
+export W2SP_WS_CONVENTION=II       # MUST match how <seed>_hr.dat was built (see §6/§7)
+export W2SP_DEGENERACY_TOL=1e-3    # texture grouping >> the ~4e-5 _hr.dat noise (§7)
+make regen-wberri-golden          # CMake custom target -> writes the .ref files here
 ```
 
-After regenerating, **hand-validate** the numbers against the WannierBerri run
-before committing the `.ref` files (the architecture trades a one-time manual check
+The fixture prefix must point at a dir holding `<seed>.chk` + `.mmn` + `.eig` +
+`.spn` + `_u.mat` (the `.chk`/`.mmn` live in the gen working dir, not the slim
+`/tmp/fix/<seed>`). After regenerating, **hand-validate** the numbers against the
+WannierBerri run before committing (the architecture trades a one-time manual check
 for a fast, dependency-free CI).
 
 ## File formats
