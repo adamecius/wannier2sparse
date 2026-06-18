@@ -98,6 +98,63 @@ full $E(k)$ path would need the per-$R$ blocks before folding; for the 1D chain,
 `--mode spectrum` already recovers the dispersion because its sorted eigenvalues
 are the band sampled at the supercell's allowed $k$-points.
 
+## Shipping the model, not its spectrum: the provenance bundle
+
+That last paragraph left a thread hanging: a full $E(k)$ needs the per-$R$ blocks
+before folding, and the CSR no longer has them. The bundle is exactly those blocks.
+Instead of expanding, `--mode bundle` writes the primitive operator $O_{ij}(R)$
+unexpanded, so a consumer holds the model itself and can form the Bloch
+Hamiltonian at any $\mathbf{k}$,
+
+$$ H(\mathbf{k}) = \sum_{\mathbf{R}} e^{i\mathbf{k}\cdot\mathbf{R}}\, H(\mathbf{R}), $$
+
+then pick its own supercell later. The lesson of this gallery, that $O_{ij}(R)$ is
+the whole model, becomes literal: the bundle ships that object and nothing folded.
+
+```bash
+$W2SP_BIN graphene 1 1 1 VX SZ --mode bundle -o out
+```
+
+```
+out/graphene.w2sp/
+  manifest.json
+  operators/HAM.hr.dat   VX.hr.dat   SZ.hr.dat
+```
+
+The supercell dimensions are accepted but ignored, since nothing is expanded. Each
+`operators/<NAME>.hr.dat` is the same `_hr.dat` shape the tool reads, so it
+re-enters any pipeline through `--op-file`. The numbers are already
+`ndegen`-normalized and written with `ndegen = 1`: the trap to avoid is dividing by
+the Wigner-Seitz degeneracy a second time, and the manifest's `normalization` block
+records that it was applied once already.
+
+What the CSR discards, the manifest keeps: the lattice and reciprocal vectors, the
+Wannier sites with their spin labels, the crystal symmetry operations, and the DFT
+and Wannier conditions behind the model. The last two are read from a Quantum
+ESPRESSO `data-file-schema.xml` and a Wannier90 `.win`, named in a small `run.json`
+that can drive the whole run in place of the positional arguments:
+
+```bash
+cat > run.json <<'JSON'
+{ "label": "graphene", "seed": "graphene", "output_dir": "out", "mode": "bundle",
+  "operators": ["VX", "SZ"],
+  "provenance": { "qe_xml": "scf.save/data-file-schema.xml", "win": "graphene.win" } }
+JSON
+$W2SP_BIN --config run.json
+```
+
+This produces a bundle byte-identical to the positional call above. If a provenance
+file is absent, its manifest block is `null` and `provenance_complete` is `false`,
+so the bundle is always well-formed; supply both and a consumer can rebuild not
+only $H(\mathbf{k})$ but the physical context it lives in. That the unexpanded
+operator plus the manifest is sufficient is checked in the repo: the
+`bundle_hk_rebuild` test reconstructs $H(\mathbf{k})$ from a written bundle and
+recovers the graphene Dirac touching at $E=0$.
+
+```bash
+ctest --test-dir ../build -R bundle_hk_rebuild --output-on-failure          # PASS
+```
+
 ## A real Wannier90 model: silicon, with the Wigner-Seitz minimum image
 
 Unlike the ideal models above, silicon ($sp^3$, SOC-free) is a real DFT-derived

@@ -111,6 +111,8 @@ wannier2sparse LABEL N1 N2 N3 [OP ... | all] [options]
 | `--exact-spin`         | Build exact spin operators from `<seed>.spn` + `<seed>_u.mat` via the gauge transform. |
 | `--orbital-L`          | Build orbital angular momentum from `<seed>.amn` + `<seed>_u.mat` + `<seed>.win` (pure p/d shells only). |
 | `--check [NAME]`       | Self-verify operators and write `<op>.check` sidecars (`NAME` = `hermiticity`, `sum_rules`, `algebra`, `aliasing`, `bounds`; default `all`). |
+| `--mode MODE`          | Output mode: `sparse` (default; expand to the supercell CSR) or `bundle` (emit the primitive operators `O_ij(R)` plus a JSON manifest with provenance to `<out>/<LABEL>.w2sp/`). In `bundle` mode `N1 N2 N3` are optional and ignored. See [Bundle output](#bundle-output-provenance-for-lsquant). |
+| `--config PATH`        | Drive a `bundle` run from a `run.json` config file (label, operators, output dir, and DFT/Wannier provenance sources) instead of positional arguments. |
 | `-h, --help`           | Show help and exit. |
 | `--list-operators`     | List valid operator names and exit. |
 | `--version`            | Show version and exit. |
@@ -137,6 +139,14 @@ wannier2sparse graphene 50 50 1 all -o out
 
 # Exact spin operators from Wannier90 gauge data
 wannier2sparse Fe 4 4 4 --exact-spin
+
+# Bundle: primitive operators O_ij(R) + a provenance manifest, no expansion
+# (the supercell dimensions are accepted but ignored in bundle mode)
+wannier2sparse graphene 1 1 1 VX SZ --mode bundle -o out
+# -> out/graphene.w2sp/{manifest.json, operators/HAM.hr.dat, operators/VX.hr.dat, ...}
+
+# The same bundle run, driven entirely by a config file
+wannier2sparse --config run.json
 ```
 
 ---
@@ -177,6 +187,7 @@ For a given `LABEL`, the tool reads:
 | `LABEL.<OP>.CSR` | One file per requested operator. |
 | `LABEL.<OP>.desc` | Physical descriptor (with `--bounds`). |
 | `LABEL.<OP>.check` | Self-check report (with `--check`). |
+| `LABEL.w2sp/` | Provenance bundle directory (with `--mode bundle`); see [Bundle output](#bundle-output-provenance-for-lsquant). |
 
 CSR text format (one matrix per file):
 
@@ -192,6 +203,82 @@ H = ½(M + M†); for a Hermitian operator this returns M unchanged. A future
 upper-triangle mode (flagged storage=upper in the .desc sidecar) would store
 col ≥ row only and be reconstructed as U + U† − diag(U); it is enabled only when
 the operator passes the Hermiticity check (`--check hermiticity`).
+
+---
+
+## Bundle output (provenance for lsquant)
+
+The default `sparse` mode folds every `H(R)` into one supercell matrix under
+periodic boundary conditions, so the CSR carries the *spectrum* of a chosen
+supercell but no longer the cell index `R`, and none of the structure or DFT
+history that produced the model. `--mode bundle` is the additive alternative: it
+ships the **primitive** real-space operators `O_ij(R)` unexpanded, together with a
+JSON manifest of full provenance, so a consumer (the twin KPM package **lsquant**)
+can build `H(k) = Σ_R e^{ik·R} H(R)`, choose its own supercell, and keep the
+crystal structure, symmetry, and DFT/Wannier conditions attached. The positional
+CLI and the CSR path are unchanged; bundle mode bypasses the supercell engine by
+design, so the supercell dimensions are accepted but ignored.
+
+A bundle is a directory `<LABEL>.w2sp/`:
+
+```
+<LABEL>.w2sp/
+  manifest.json          # structure + symmetry + DFT/Wannier provenance + operator index
+  operators/
+    HAM.hr.dat           # primitive O_ij(R), Wannier90 _hr.dat-shaped text (re-ingestible)
+    VX.hr.dat  SZ.hr.dat ...
+  wsvec.dat              # copied verbatim if a _wsvec.dat was applied
+```
+
+Each `operators/<NAME>.hr.dat` is written in the same `_hr.dat` shape the tool
+reads, so it round-trips through `--op-file` and the `read_wannier_file` parser.
+Values are emitted **post-`ndegen` with `ndegen = 1`** for every block, so the
+consumer must not divide again; the manifest's `normalization` block records
+`ndegen_applied` / `wsvec_applied` / `truncation_threshold`. Output is
+byte-deterministic (canonical `R`/orbital sort, one-based orbital indices, fixed
+precision). The `manifest.json` carries `structure` (lattice + reciprocal vectors,
+atoms, wannier sites, `num_wann`), `symmetry` (rotation + fractional translation
+per operation), `dft_provenance` (code/version, XC functional, spin-orbit /
+noncollinear, `ecutwfc`, k-mesh, pseudopotentials), `wannier_provenance`
+(num_wann/num_bands, mp_grid, exclude_bands, projections, disentanglement,
+`use_ws_distance`), and an `operators` index. Any missing provenance source leaves
+that block `null` and sets `provenance_complete: false`; the bundle is always
+well-formed.
+
+The provenance sources are parsed from a Quantum ESPRESSO `data-file-schema.xml`
+(structure, symmetry, DFT conditions) and a Wannier90 `.win` (wannierisation
+conditions). They are supplied through a `run.json` config:
+
+```json
+{
+  "label": "graphene", "project_dir": ".", "seed": "graphene", "output_dir": "out",
+  "mode": "bundle", "operators": ["VX", "VY", "SZ"],
+  "exact_spin": false, "orbital_L": false, "emit_bounds": true,
+  "truncation_threshold": 1e-8,
+  "provenance": { "qe_xml": "scf.save/data-file-schema.xml", "win": "graphene.win" }
+}
+```
+
+| `run.json` key | Meaning |
+|----------------|---------|
+| `label`        | System label; names the `<LABEL>.w2sp/` bundle. |
+| `project_dir`, `seed` | Resolve the inputs as `<project_dir>/<seed>` (default seed = `label`). |
+| `output_dir`   | Parent directory of the bundle. |
+| `mode`         | `bundle` (the `--config` driver defaults to bundle if omitted). |
+| `operators`    | Operators to build, e.g. `["VX","VY","SZ"]` (same codes as the CLI). |
+| `exact_spin`, `orbital_L` | Build the gauge-transform spin / orbital-`L` operators. |
+| `emit_bounds`  | Record spectral bounds for the Hamiltonian when a `<seed>.eig` is present. |
+| `truncation_threshold` | Echoed into the manifest's `normalization` block. |
+| `provenance.qe_xml` | Path to the QE `data-file-schema.xml` (DFT provenance). |
+| `provenance.win`    | Path to the Wannier90 `.win` (Wannier provenance). |
+
+Every key is optional: a `run.json` with only a `label` produces a well-formed
+bundle with `null` provenance blocks. The two builds below are byte-identical:
+
+```bash
+wannier2sparse graphene 1 1 1 VX SZ --mode bundle -o out   # positional
+wannier2sparse --config run.json                           # config-driven
+```
 
 ---
 

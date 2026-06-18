@@ -13,12 +13,23 @@ set(PUBLIC_HEADERS
     ${PROJECT_SOURCE_DIR}/include/checks.hpp
     ${PROJECT_SOURCE_DIR}/include/tbmodel.hpp
     ${PROJECT_SOURCE_DIR}/include/w2sp_arguments.hpp
+    ${PROJECT_SOURCE_DIR}/include/json_writer.hpp
+    ${PROJECT_SOURCE_DIR}/include/system_provenance.hpp
+    ${PROJECT_SOURCE_DIR}/include/bundle_writer.hpp
+    ${PROJECT_SOURCE_DIR}/include/run_config.hpp
+    ${PROJECT_SOURCE_DIR}/include/win_parser.hpp
+    ${PROJECT_SOURCE_DIR}/include/qe_xml_parser.hpp
 )
 
 add_library(${LIBRARY_NAME} STATIC
     wannier_parser.cpp
     hopping_list.cpp
     gauge.cpp
+    bundle_writer.cpp
+    run_config.cpp
+    win_parser.cpp
+    qe_xml_parser.cpp
+    ${PROJECT_SOURCE_DIR}/include/third_party/pugixml/pugixml.cpp
 )
 add_library(wannier2sparse::wannierlib ALIAS ${LIBRARY_NAME})
 

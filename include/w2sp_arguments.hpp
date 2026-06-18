@@ -54,6 +54,12 @@ public:
     bool                     exact_spin;      ///< --exact-spin: use gauge transform
     bool                     orbital_l;       ///< --orbital-L: build orbital angular momentum
     std::string              check;           ///< --check selector
+    std::string              mode;            ///< --mode: "sparse" (default) or "bundle"
+    std::string              config_path;     ///< --config: path to a run.json (bundle driver)
+    bool                     has_truncation;  ///< truncation_threshold was set (from run.json)
+    double                   truncation_threshold; ///< bundle truncation threshold (manifest)
+    std::string              qe_xml_path;     ///< QE data-file-schema.xml for DFT provenance
+    std::string              win_path;        ///< .win for Wannier provenance
     std::string              program_name;    ///< argv[0]
 
     /**
@@ -61,7 +67,9 @@ public:
      */
     W2SP_arguments()
         : cellDim({{1, 1, 1}}), output_dir("."), emit_descriptor(false),
-          exact_spin(false), orbital_l(false), program_name("wannier2sparse") {}
+          exact_spin(false), orbital_l(false), mode("sparse"),
+          has_truncation(false), truncation_threshold(0.0),
+          program_name("wannier2sparse") {}
 
     /**
      * @brief Resolved input file stem: <project_dir>/<seed>.
@@ -117,6 +125,21 @@ public:
     }
 
     /**
+     * @brief Whether a token is a plain (optionally signed) integer literal.
+     * @param s input string
+     * @return true if s parses entirely as an integer
+     */
+    static bool looks_like_int(const std::string& s)
+    {
+        if (s.empty()) return false;
+        size_t i = (s[0] == '+' || s[0] == '-') ? 1 : 0;
+        if (i == s.size()) return false;
+        for (; i < s.size(); ++i)
+            if (!std::isdigit(static_cast<unsigned char>(s[i]))) return false;
+        return true;
+    }
+
+    /**
      * @brief Parse command-line arguments into this object.
      * @param argc argument count
      * @param argv argument vector
@@ -165,6 +188,21 @@ public:
                 if (vd == '?' || sd == '?') { error("'--spin-current' axes must be X, Y or Z"); return EXIT_ERROR; }
                 spin_currents.push_back(std::make_pair(vd, sd));
             }
+            else if (a == "--mode")
+            {
+                if (i + 1 >= argc) { error("missing value after '--mode' (sparse|bundle)"); return EXIT_ERROR; }
+                mode = argv[++i];
+                if (mode != "sparse" && mode != "bundle")
+                {
+                    error("unknown --mode '" + mode + "' (expected 'sparse' or 'bundle')");
+                    return EXIT_ERROR;
+                }
+            }
+            else if (a == "--config")
+            {
+                if (i + 1 >= argc) { error("missing path after '--config'"); return EXIT_ERROR; }
+                config_path = argv[++i];
+            }
             else if (a == "--bounds")              { emit_descriptor = true; }
             else if (a == "--exact-spin")          { exact_spin = true; }
             else if (a == "--orbital-l" || a == "--orbital-L") { orbital_l = true; }
@@ -185,8 +223,26 @@ public:
             else                                   { positional.push_back(a); }
         }
 
-        if (positional.empty()) { print_usage(); return EXIT_ERROR; }
-        if (positional.size() < 4)
+        // With --config the run.json supplies the label/operators/provenance, so
+        // positional LABEL and the supercell dimensions are not required here.
+        const bool config_mode = !config_path.empty();
+
+        if (positional.empty() && !config_mode) { print_usage(); return EXIT_ERROR; }
+
+        const bool bundle_mode = (mode == "bundle");
+
+        // In bundle (or config) mode the operator is not expanded, so the supercell
+        // dimensions are optional (and ignored). Accept LABEL [N1 N2 N3] [OP...]: if
+        // the three tokens after LABEL all parse as integers, treat them as (ignored)
+        // dims; otherwise the remaining positionals are operators.
+        bool has_dims = !bundle_mode && !config_mode;
+        if (bundle_mode || config_mode)
+            has_dims = positional.size() >= 4 &&
+                       looks_like_int(positional[1]) &&
+                       looks_like_int(positional[2]) &&
+                       looks_like_int(positional[3]);
+
+        if (!bundle_mode && !config_mode && positional.size() < 4)
         {
             error("expected LABEL N1 N2 N3, but got " +
                   std::to_string(positional.size()) + " positional argument(s)");
@@ -194,19 +250,21 @@ public:
             return EXIT_ERROR;
         }
 
-        label = positional[0];
-        for (int i = 0; i < 3; ++i)
-        {
-            const std::string& tok = positional[1 + i];
-            try                           { cellDim[i] = std::stoi(tok); }
-            catch (const std::exception&) { error("supercell dimension '" + tok + "' is not an integer"); return EXIT_ERROR; }
-            if (cellDim[i] < 1)           { error("supercell dimension must be >= 1 (got '" + tok + "')"); return EXIT_ERROR; }
-        }
+        if (!positional.empty()) label = positional[0];
+        if (has_dims)
+            for (int i = 0; i < 3; ++i)
+            {
+                const std::string& tok = positional[1 + i];
+                try                           { cellDim[i] = std::stoi(tok); }
+                catch (const std::exception&) { error("supercell dimension '" + tok + "' is not an integer"); return EXIT_ERROR; }
+                if (cellDim[i] < 1)           { error("supercell dimension must be >= 1 (got '" + tok + "')"); return EXIT_ERROR; }
+            }
 
+        const size_t op_start = has_dims ? 4 : 1;
         if (want_all)
             operators = available_operators();
         else
-            for (size_t i = 4; i < positional.size(); ++i) operators.push_back(positional[i]);
+            for (size_t i = op_start; i < positional.size(); ++i) operators.push_back(positional[i]);
 
         for (const auto& op : operators)
             if (!is_valid_operator(op))
@@ -288,6 +346,14 @@ private:
 "      --check [NAME]     Self-verify each operator (hermiticity, sum_rules,\n"
 "                         algebra, aliasing, bounds) -> <op>.check sidecars.\n"
 "                         NAME selects one check; default is all. CSR unchanged.\n"
+"      --mode MODE        Output mode: 'sparse' (default; expand to supercell CSR)\n"
+"                         or 'bundle' (emit the primitive operators O_ij(R) plus a\n"
+"                         JSON manifest with provenance to <out>/<LABEL>.w2sp/, for\n"
+"                         lsquant to build the Hamiltonian itself). In bundle mode\n"
+"                         the supercell dimensions are optional and ignored.\n"
+"      --config PATH      Drive a bundle run from a run.json config file instead\n"
+"                         of positional arguments (label, operators, output dir\n"
+"                         and DFT/Wannier provenance sources are read from it).\n"
 "  -h, --help             Show this help and exit.\n"
 "      --list-operators   List valid operator names and exit.\n"
 "      --version          Show version and exit.\n"

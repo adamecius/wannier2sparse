@@ -213,6 +213,21 @@ struct hopping_list
                 else
                     get<1>(match->second) += get<1>(hop);
             }
+            // Drop edges that sum to (near) zero. Explicit zero storage is an
+            // engine implementation detail: the hopping list intentionally keeps
+            // duplicate/zero terms (e.g. a velocity bond whose displacement
+            // component vanishes, or H minus itself) and sums them only at CSR
+            // assembly. Two lists that agree on every nonzero edge are equal, so
+            // comparing must ignore zero-sum tags -- this is also exactly what the
+            // create_hopping_list read side and write_hopping_list_as_hr writer do,
+            // which is what makes derived operators (velocity, ...) round-trip.
+            for( auto it = reduced.begin(); it != reduced.end(); )
+            {
+                if( sqrt(norm(get<1>(it->second))) <= numeric_limits<double>::epsilon() )
+                    it = reduced.erase(it);
+                else
+                    ++it;
+            }
             return reduced;
         };
 
@@ -387,6 +402,73 @@ SparseMatrix_t supercell_matrix(const hopping_list::cellID_t& cellDim,
  * exactly one writer.
  */
 void write_csr(const SparseMatrix_t& matrix, string output_filename);
+
+/**
+ * @brief Serialize a primitive-cell hopping_list to Wannier90 `_hr.dat` text.
+ * @param hl primitive-cell operator O_ij(R) (post-ndegen, as held in memory)
+ * @param out output stream
+ * @param comment first-line comment written verbatim
+ *
+ * Writes the operator in the same `_hr.dat` shape the tool reads, so it round-
+ * trips through create_hopping_list(read_wannier_file(...)) and re-ingests via
+ * --op-file. Unlike CSR, this preserves the cell index R, which lets a consumer
+ * (e.g. lsquant) rebuild H(k) = sum_R e^{ik.R} O(R) itself.
+ *
+ * The in-memory values are already ndegen-normalized, so every block is written
+ * with ndegen = 1 (the consumer must not divide again). Duplicate (R,i,j) edges
+ * are summed, near-zero results are dropped, and R / (i,j) are emitted in a
+ * canonical sorted order so the output is byte-deterministic. Orbital indices are
+ * written one-based to match the Wannier90 convention. nrpts is the number of
+ * distinct R actually present (the file is "pruned": only non-zero entries are
+ * listed, which is safe precisely because all ndegen are 1).
+ */
+inline void write_hopping_list_as_hr(const hopping_list& hl, std::ostream& out,
+                                     const std::string& comment = "wannier2sparse bundle operator")
+{
+    out.precision(std::numeric_limits<double>::digits10 + 2);
+
+    // Sum duplicate edges, keyed by (R, i, j), in a canonical (R-major, then
+    // edge) order via std::map's ordering on the array/tuple key.
+    std::map<std::tuple<hopping_list::cellID_t, int, int>, hopping_list::value_t> summed;
+    for (const auto& h : hl.hoppings)
+    {
+        const auto& R = std::get<0>(h);
+        const auto& e = std::get<2>(h);
+        summed[std::make_tuple(R, e[0], e[1])] += std::get<1>(h);
+    }
+
+    // Drop near-zero results (mirrors the create_hopping_list read-side filter)
+    // and collect the distinct R that survive, in canonical order.
+    std::vector<std::pair<std::tuple<hopping_list::cellID_t,int,int>, hopping_list::value_t> > kept;
+    std::vector<hopping_list::cellID_t> rpts;
+    for (const auto& kv : summed)
+    {
+        if (std::sqrt(std::norm(kv.second)) <= std::numeric_limits<double>::epsilon())
+            continue;
+        const auto& R = std::get<0>(kv.first);
+        if (rpts.empty() || rpts.back() != R) rpts.push_back(R);  // map order groups equal R
+        kept.push_back(kv);
+    }
+
+    out << comment << "\n";
+    out << hl.num_wann << "\n";
+    out << rpts.size() << "\n";
+    for (size_t i = 0; i < rpts.size(); ++i)
+    {
+        out << 1;
+        if ((i + 1) % 15 == 0) out << "\n"; else out << " ";
+    }
+    if (rpts.empty() || rpts.size() % 15 != 0) out << "\n";
+
+    for (const auto& kv : kept)
+    {
+        const auto& R = std::get<0>(kv.first);
+        const int i = std::get<1>(kv.first), j = std::get<2>(kv.first);
+        out << R[0] << " " << R[1] << " " << R[2] << " "
+            << (i + 1) << " " << (j + 1) << " "
+            << kv.second.real() << " " << kv.second.imag() << "\n";
+    }
+}
 
 /**
  * @brief Build the legacy textual tag for a hopping.
