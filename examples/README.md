@@ -1,128 +1,143 @@
-# Runnable examples — see wannier2sparse in action
+# Runnable examples: see wannier2sparse in action
 
-Each example builds a canonical tight-binding model, expands it into a supercell
-with `wannier2sparse`, and plots its **density of states (DOS)** from the
-resulting CSR using the **Kernel Polynomial Method** — the same technique LinQT
-uses downstream, and one that needs only sparse matrix–vector products, so it
-scales to large supercells without dense diagonalization.
+A finite crystal has a discrete set of levels, yet we routinely draw a smooth
+density of states and read the physics off its peaks and gaps. Where does the
+smooth curve come from, and is it faithful to the model we started from?
 
-## Requirements
+Each example here answers that for a canonical tight-binding model. It builds the
+model as a Wannier90 `_hr.dat`, expands it into a supercell with `wannier2sparse`,
+and reconstructs the density of states $\rho(E)$ from the resulting sparse CSR by
+the Kernel Polynomial Method (KPM). KPM needs only sparse matrix-vector products,
+the same operation a LinQT transport calculation runs, so the curve scales to
+large supercells without dense diagonalization. The lesson the gallery teaches:
+the real-space operator $O_{ij}(R)$ in the CSR is the whole model, and the
+supercell size is the resolution dial on its spectrum.
 
-- `wannier2sparse` built (see the top-level `README.md`). The examples look for
-  `../build/wannier2sparse`; override with `W2SP_BIN=/path/to/wannier2sparse`.
-- Python 3 with `numpy`, `scipy`, `matplotlib`.
-
-## Run one
+## Running an example
 
 ```bash
 cd examples
 bash run.sh graphene 80        # model + supercell size N
-# -> graphene/graphene_dos.png
+# -> models/tb/graphene/graphene_dos.png
 ```
 
-Models: `chain1d`, `graphene`, `cubic`, `haldane`. `N` is the supercell size
-(1D uses N×1×1, 2D N×N×1, 3D uses ~N^(1/3) per side).
+The tight-binding models are `chain1d`, `graphene`, `cubic`, `haldane`. `N` sets
+the supercell ($N\times1\times1$ in 1D, $N\times N\times1$ in 2D, and about
+$N^{1/3}$ per side in 3D). Building the tool is covered once in the top-level
+[README](../README.md); set `W2SP_BIN=/path/to/wannier2sparse` if it is not at
+`../build/wannier2sparse`.
 
-## What each example shows (and the analytic check)
+## The physics each model shows
 
-| Model | What you see in the DOS | Analytic |
+Every model has a closed-form spectrum, so the figure is checked against an
+analytic prediction, not against itself ($t=-1$ throughout):
+
+| Model | What the DOS shows | Analytic limit |
 |---|---|---|
-| **chain1d** | a 1D band with van Hove peaks at the edges | support `[-2,2]` (`E=2t cos k`, `t=-1`) |
-| **graphene** | **Dirac dip to zero at E=0**, van Hove peaks at `±|t|` | edges `±3`, peaks `±1` |
-| **cubic** | 3D band, van Hove kink near center | edges `±6` (`2t(cos kx+cos ky+cos kz)`) |
-| **haldane** | a **gap around E=0** (vs graphene's gapless dip) | gap `≈ 3√3·t₂ ≈ 0.78` for `t₂=0.15` |
+| `chain1d` | a 1D band with van Hove divergences at the edges | $E = 2t\cos k$, support $[-2,2]$ |
+| `graphene` | a Dirac dip to zero at $E=0$, van Hove peaks at $\pm\lvert t\rvert$ | edges $\pm 3$, peaks $\pm 1$ |
+| `cubic` | a 3D band with a van Hove kink near the centre | $E = 2t(\cos k_x+\cos k_y+\cos k_z)$, edges $\pm 6$ |
+| `haldane` | a gap around $E=0$, in contrast to graphene's gapless dip | $E_g \approx 3\sqrt{3}\,t_2 \approx 0.78$ for $t_2=0.15$ |
 
-These are produced by `gen_models.py`; edit it to change parameters
-(`t`, `t₂`, `φ`, mass) and re-run.
+These are written by `gen_models.py`; edit it to change $t$, $t_2$, the flux
+$\phi$, or the sublattice mass, and re-run. The figures below come from
+`w2s_dos.py` (KPM, Jackson kernel, fixed seed) and are checked by `validate.py`,
+which asserts the support, gap, dip, or metallic class against the table above.
 
-## What you should see
+![A single cosine band whose DOS diverges at the two band edges](img/chain1d_dos.png)
 
-The plots below are produced by `w2s_dos.py` (KPM, Jackson kernel, fixed
-`seed=0`), so a correct run reproduces them. Validated by `validate.py`
-(support within tolerance, gap/dip/metal class correct).
+FIG. 1. Density of states $\rho(E)$ of the 1D tight-binding chain. The
+characteristic 1D inverse-square-root van Hove divergences sit at the band edges
+$E = \pm 2\lvert t\rvert$ and the support is $[-2,2]$ for $t=-1$. KPM
+reconstruction with $M = 2048$ Chebyshev moments, $R = 20$ stochastic vectors,
+Jackson kernel, on a $400\times1\times1$ supercell.
 
-### chain1d — 1D van Hove edges
-![chain1d DOS](img/chain1d_dos.png)
-A single cosine band: support `[-2,2]`, with the characteristic 1D
-`1/√(…)` van Hove divergences at the band edges `±2|t|`.
+![Graphene DOS vanishing linearly at the Dirac point with van Hove peaks](img/graphene_dos.png)
 
-### graphene — Dirac point
-![graphene DOS](img/graphene_dos.png)
-Van Hove peaks at `E=±|t|`, DOS → 0 at the Dirac point (`E=0`), band edges `±3`.
+FIG. 2. Density of states of honeycomb graphene. $\rho(E)$ vanishes at the Dirac
+point $E=0$, with van Hove peaks at $E=\pm\lvert t\rvert$ and band edges
+$\pm 3\lvert t\rvert$. Same KPM settings as FIG. 1 on an $80\times80\times1$
+supercell.
 
-### cubic — 3D band, van Hove kink
-![cubic DOS](img/cubic_dos.png)
-Simple-cubic band over `[-6,6]` (`2t(cos kₓ+cos k_y+cos k_z)`), with a van Hove
-feature near the centre. A small supercell, so the KPM density is coarser.
+![Simple-cubic 3D band with a van Hove feature near the centre](img/cubic_dos.png)
 
-### haldane — topological gap
-![haldane DOS](img/haldane_dos.png)
-The complex next-nearest hopping opens a gap (`≈ ±0.78 = 3√3·t₂` for `t₂=0.15`);
-contrast with graphene's gapless Dirac dip above.
+FIG. 3. Density of states of the simple-cubic band over $[-6,6]$,
+$E = 2t(\cos k_x+\cos k_y+\cos k_z)$, with a van Hove feature near the centre.
+The supercell is a modest $18\times18\times18$, so the KPM density is coarser than
+the 2D panels. Same KPM settings as FIG. 1.
 
-## Plot any CSR yourself
+![Haldane DOS with a clean gap around zero energy](img/haldane_dos.png)
 
-`w2s_dos.py` works on any `*.HAM.CSR` (or any operator CSR) the tool writes:
+FIG. 4. Density of states of the Haldane model (graphene plus a complex
+next-nearest-neighbour hopping). The complex hopping opens a gap
+$E_g \approx 3\sqrt{3}\,t_2 \approx 0.78$ for $t_2 = 0.15$, in contrast to
+graphene's gapless Dirac dip in FIG. 2. Same KPM settings as FIG. 1 on an
+$80\times80\times1$ supercell.
+
+## Plotting any CSR yourself
+
+`w2s_dos.py` works on any `*.HAM.CSR`, or any operator CSR, the tool writes:
 
 ```bash
-python3 w2s_dos.py graphene/graphene.HAM.CSR --title "graphene" --out g.png
+python3 w2s_dos.py graphene/graphene.HAM.CSR --out g.png
 python3 w2s_dos.py chain1d/chain1d.HAM.CSR --mode spectrum --out band.png   # small cells
 ```
 
-- `--mode dos` (default): KPM spectral density (`--moments`, `--vectors` control
-  resolution/smoothness).
-- `--mode spectrum`: exact eigenvalues (dense; use only on small supercells). For
-  1D the sorted spectrum traces the band `E(k)`.
+`--mode dos` (the default) gives the KPM spectral density, with `--moments` and
+`--vectors` controlling resolution and smoothness. `--mode spectrum` gives the
+exact eigenvalues by dense diagonalization, for small supercells only; for the 1D
+chain the sorted spectrum traces the band $E(k)$ directly.
 
-## A note on bands vs. DOS
+## Why the spectrum, and not $E(k)$
 
-`wannier2sparse` exports the **real-space supercell Hamiltonian** (all `H(R)`
-folded into one matrix under PBC), so the quantity that comes straight out of the
-CSR is the **spectrum / DOS**, not `E(k)`. That is exactly what a KPM transport
-calculation consumes. A full `E(k)` band path would need the per-`R` blocks
-before folding; for the 1D chain, `--mode spectrum` already recovers the
-dispersion because its sorted eigenvalues are the band sampled at the supercell's
-allowed `k`-points.
+`wannier2sparse` exports the real-space supercell Hamiltonian, with every $H(R)$
+folded into one matrix under periodic boundary conditions. The quantity that comes
+straight out of the CSR is therefore the spectrum, or its density, not the band
+structure $E(k)$. That is exactly what a KPM transport calculation consumes. A
+full $E(k)$ path would need the per-$R$ blocks before folding; for the 1D chain,
+`--mode spectrum` already recovers the dispersion because its sorted eigenvalues
+are the band sampled at the supercell's allowed $k$-points.
 
-## Real Wannier90 model — silicon (WS minimum-image **on**)
+## A real Wannier90 model: silicon, with the Wigner-Seitz minimum image
 
-Unlike the ideal TB models above, this is a **real DFT-derived** Wannier model
-(silicon, `sp3`, SOC-free) with genuine Wigner–Seitz degeneracies and a
-`_wsvec.dat`. The tool **auto-detects** WS handling from the presence of
-`<seed>_wsvec.dat` (no flag): it applies the minimum-image correction, exactly the
-real workflow.
+Unlike the ideal models above, silicon ($sp^3$, SOC-free) is a real DFT-derived
+Wannier model, with genuine Wigner-Seitz degeneracies and a `_wsvec.dat`. The tool
+auto-detects the minimum-image correction from the presence of
+`<seed>_wsvec.dat`, with no flag, which is the real workflow.
 
 ```bash
-# fixture lives outside the repo (regenerate it — see below); point the tool at it
-cd models/wannier/silicon                       # or wherever the fixture is
+# the fixture lives outside the repo (regenerate it, see below); point the tool at it
+cd models/wannier/silicon
 $W2SP_BIN silicon 8 8 8                          # WS auto-on (silicon_wsvec.dat present)
-python3 /path/to/examples/w2s_dos.py silicon.HAM.CSR \
-        --title "silicon (W90, WS) DOS" --out silicon_dos.png
+python3 /path/to/examples/w2s_dos.py silicon.HAM.CSR --out silicon_dos.png
 ```
 
-![silicon DOS](img/silicon_dos.png)
+![Silicon DOS with a clear insulating gap inside the DFT eigenvalue window](img/silicon_dos.png)
 
-- **Why `8 8 8`, not `4 4 4`?** The real Wannier `H(R)` reaches out to `|R| = 3`,
-  so the minimum-image guard requires a supercell `N ≥ 2·range+1 = 7` per axis
-  (smaller cells would alias distinct bonds and corrupt the operator — the tool
-  refuses them). Ideal TB models have `range = 1`, hence the small `N` there.
-- **Validation (against its own `.eig`, not a closed form):** the DOS support
-  `[-5.83, 16.40] eV` lies inside the DFT eigenvalue window `[-5.82, 19.44] eV`
-  and shows a clear **gap** — consistent with silicon being an insulator. A wrong
-  WS treatment typically smears or closes that gap.
-- **Inputs are not committed** (each `_hr.dat`/`_wsvec.dat` is ~0.3 MB; the repo
-  keeps only the plot). Regenerate the fixture with
-  `../../../test/fixtures/gen_fixture.sh` (see `../test/fixtures/README.md`). A
-  HAM/DOS run needs only `silicon_hr.dat` + `silicon_wsvec.dat` (+ a `silicon.uc`
-  with the three lattice vectors from `silicon.win`). A velocity operator would
-  also need `silicon.xyz` — Wannier90's `_centres.xyz` is **not** this tool's
-  format, so build one as: first line `num_wann`, then the first `num_wann`
-  `label x y z` rows of `_centres.xyz` (the Wannier centres; drop the comment line).
+FIG. 5. Density of states of the real Wannier90 silicon model with the
+Wigner-Seitz minimum image applied. The support $[-5.83, 16.40]\ \mathrm{eV}$ lies
+inside the DFT eigenvalue window $[-5.82, 19.44]\ \mathrm{eV}$ and shows a clean
+gap, consistent with silicon being an insulator; a wrong WS treatment smears or
+closes that gap. KPM as in FIG. 1, on an $8\times8\times8$ supercell.
 
-## Orbital angular momentum — copper (`--orbital-L`)
+Two things make this case real rather than ideal. The Wannier $H(R)$ reaches out
+to $\lvert R\rvert = 3$, so the minimum-image guard requires $N \ge 2\,\mathrm{range}+1 = 7$
+per axis; smaller cells would alias distinct bonds and corrupt the operator, and
+the tool refuses them (ideal models have range 1, hence the small $N$ above). The
+inputs are not committed (each `_hr.dat` and `_wsvec.dat` is about 0.3 MB; the
+repo keeps only the plot). Regenerate the fixture with
+`../../../test/fixtures/gen_fixture.sh` (see `../test/fixtures/README.md`). A DOS
+run needs only `silicon_hr.dat`, `silicon_wsvec.dat`, and a `silicon.uc` holding
+the three lattice vectors from `silicon.win`; a velocity operator would also need
+`silicon.xyz`, which is not the same as Wannier90's `_centres.xyz` (build one as a
+`num_wann` header followed by the first `num_wann` `label x y z` rows of
+`_centres.xyz`).
 
-Copper (`Cu:d` complete ℓ=2 shell + two interstitial `s`) is the **orbital-L**
-example. Correctness is anchored to the repo's own test, not re-derived here:
+## Orbital angular momentum: copper, with `--orbital-L`
+
+Copper (a complete $\ell=2$ shell `Cu:d` plus two interstitial $s$) is the
+orbital-$L$ example. Correctness is anchored to the repo's own test, not
+re-derived here:
 
 ```bash
 W2SP_ORBITAL_FIXTURE=/path/to/copper/copper \
@@ -130,20 +145,20 @@ W2SP_ORBITAL_FIXTURE=/path/to/copper/copper \
 $W2SP_BIN copper 7 7 7 --orbital-L          # writes copper.{LX,LY,LZ}.CSR (range 3 -> N>=7)
 ```
 
-![copper Lz ladder](img/copper_Lz.png)
+![The on-site Lz eigenvalues forming the integer ladder minus two to plus two](img/copper_Lz.png)
 
-- The **on-site local** `Lz` on a complete shell has the integer ladder
-  `{−2,−1,0,1,2}` (d) and `0` (each s) — exactly what `orbital_L_fixture`
-  verifies. The figure shows those eigenvalues for copper's 7 Wannier orbitals.
-- **Honesty note:** the operator the tool *exports*, the **projected** supercell
-  `L_W(R)` (`copper.LZ.CSR`), is Hermitian but **not** integer-valued — Wannier
-  functions are not pure spherical harmonics. The integer ladder lives on the
-  local block, not the projected one. (See `docs/conventions.md` §5.)
+FIG. 6. On-site local $L_z$ eigenvalues for copper's seven Wannier orbitals. A
+complete shell carries the integer ladder $\{-2,-1,0,1,2\}$ for the $d$ states and
+$0$ for each $s$, which is exactly what the `orbital_L_fixture` test verifies. The
+operator the tool exports, the projected supercell $L_W(R)$ in `copper.LZ.CSR`, is
+Hermitian but not integer-valued, because Wannier functions are not pure spherical
+harmonics; the integer ladder lives on the local block, not the projected one (see
+[docs/conventions.md](../docs/conventions.md) §5 and [docs/operators.md](../docs/operators.md) §2.4).
 
-## Exact spin / spin–orbit — iron (`--exact-spin`)
+## Exact spin and spin-orbit: iron, with `--exact-spin`
 
-BCC iron with SOC (`spinors`) is the **spin** example — the only fixture with a
-`.spn`. Spin-operator correctness is carried by tests, not by a figure:
+BCC iron with SOC (`spinors`) is the spin example, the only fixture with a `.spn`.
+Spin-operator correctness is carried by tests, not by a figure:
 
 ```bash
 ctest --test-dir ../../../build -R gauge_spin --output-on-failure              # PASS (self-contained)
@@ -153,16 +168,25 @@ W2SP_SPIN_FIXTURE=/path/to/Fe/Fe \
 $W2SP_BIN Fe 13 13 13 --exact-spin           # writes Fe.{SXexact,SYexact,SZexact}.CSR
 ```
 
-![iron spin texture](img/iron_spin_texture.png)
+![Band-resolved spin expectation values along the iron bands](img/iron_spin_texture.png)
 
-- The plot is the **band spin texture** `⟨S_α⟩_{nk}` (ħ/2) from the
-  WannierBerri-validated golden (`test/golden/Fe_S_texture.ref`; matrix agreement
-  `2.6e-9`, texture `1.3e-3` — see `docs/conventions.md` §7).
-- **Why no DOS plot for Fe?** Its `H(R)` reaches `|R| = 6`, so the guard requires
-  `N ≥ 13`; an `18`-Wannier, range-6 supercell at `13³` produces a **>1 GB** CSR —
-  impractical for the KPM demo on a laptop. The spin operator is validated by the
-  tests above; the heavy Fe fixture (~80 MB) is regenerated by
-  `../../../test/fixtures/gen_fixture.sh`, never committed.
+FIG. 7. Band spin texture $\langle S_\alpha\rangle_{nk}$ (units $\hbar/2$) of BCC
+iron with spin-orbit coupling, from the WannierBerri-validated golden
+`test/golden/Fe_S_texture.ref` (matrix agreement $2.6\times10^{-9}$, texture
+$1.3\times10^{-3}$; see [docs/conventions.md](../docs/conventions.md) §7). There
+is no DOS panel for iron: its $H(R)$ reaches $\lvert R\rvert = 6$, so the guard
+requires $N \ge 13$, and an 18-Wannier range-6 supercell at $13^3$ produces a CSR
+above 1 GB, impractical for a laptop KPM demo. The heavy Fe fixture (about 80 MB)
+is regenerated by `../../../test/fixtures/gen_fixture.sh`, never committed.
 
-For the full fixture catalogue and the WannierBerri cross-validation, see
-`../test/fixtures/README.md`.
+## References and links
+
+- wannier2sparse source and documentation: https://github.com/adamecius/wannier2sparse
+- Operator and gauge conventions: [docs/conventions.md](../docs/conventions.md) and [docs/operators.md](../docs/operators.md).
+- Kernel Polynomial Method: A. Weisse, G. Wellein, A. Alvermann, H. Fehske,
+  Rev. Mod. Phys. 78, 275 (2006), arXiv:cond-mat/0504627.
+- Transport methodology: Z. Fan, J. H. Garcia, A. W. Cummings et al., Linear
+  scaling quantum transport methodologies, Phys. Rep. 903, 1 (2021),
+  arXiv:1811.07387.
+- The full fixture catalogue and the WannierBerri cross-validation: [../test/fixtures/README.md](../test/fixtures/README.md).
+</content>

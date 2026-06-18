@@ -25,8 +25,44 @@ def load_csr(path):
     return H
 
 def kpm_dos(H, M=2048, R=20, npts=2000, pad=1.05, seed=0):
-    """Kernel Polynomial Method DOS: Chebyshev moments by stochastic trace,
-    Jackson kernel. Uses only sparse mat-vec products (scales to large dim)."""
+    r"""Estimate the density of states of a sparse Hamiltonian by KPM.
+
+    Reconstructs :math:`\rho(E)` from Chebyshev moments
+    :math:`\mu_m = \mathrm{Tr}\,T_m(\tilde H)` estimated by a stochastic trace
+    over ``R`` random-phase vectors, damped by the Jackson kernel to suppress
+    Gibbs oscillations. The Hamiltonian is first rescaled into :math:`[-1,1]`
+    from its extremal eigenvalues (with a small ``pad`` margin) so the Chebyshev
+    recursion stays bounded. The cost is ``R*M`` sparse matrix-vector products
+    and no dense factorization, which is why it scales to the large supercells
+    ``wannier2sparse`` emits.
+
+    Parameters
+    ----------
+    H : scipy.sparse.csr_matrix, shape (n, n)
+        Hermitian Hamiltonian in eV; only its mat-vec action is used.
+    M : int
+        Chebyshev moment count; the resolution dial (broadening ~ bandwidth/M).
+    R : int
+        Number of stochastic vectors; the trace variance falls as 1/R.
+    pad : float
+        Multiplicative margin on the half-bandwidth so the spectrum stays
+        strictly inside [-1, 1] after rescaling.
+    seed : int
+        Seed for the random-phase vectors, fixed so the figure is reproducible.
+
+    Returns
+    -------
+    E : ndarray, shape (npts,)
+        Energies in eV.
+    rho : ndarray, shape (npts,)
+        Density of states per unit energy per site.
+
+    Warnings
+    --------
+    Returns a meaningless curve if ``H`` is not Hermitian; the routine assumes
+    real moments and does not check. The endpoints :math:`E=\pm` band edge are
+    excluded because the KPM weight :math:`1/\sqrt{1-x^2}` diverges there.
+    """
     n = H.shape[0]
     emax = float(eigsh(H, k=1, which='LA', return_eigenvectors=False)[0])
     emin = float(eigsh(H, k=1, which='SA', return_eigenvectors=False)[0])
