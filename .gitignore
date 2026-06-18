@@ -35,3 +35,6 @@ include/Version.h
 *.swp
 *~
 .DS_Store
+
+# Local-only reference PDFs (only the manifest agent_references.md is committed)
+agent_references/
