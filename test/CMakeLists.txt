@@ -19,6 +19,14 @@ configure_file(spin_algebra_chain_hr.dat "${TEST_ROOT}/spin_operator_algebra/spi
 configure_file(spin_algebra_chain.uc "${TEST_ROOT}/spin_operator_algebra/spin_algebra_chain.uc" COPYONLY)
 configure_file(spin_algebra_chain.xyz "${TEST_ROOT}/spin_operator_algebra/spin_algebra_chain.xyz" COPYONLY)
 
+configure_file(spin_graphene_hr.dat "${TEST_ROOT}/bundle_roundtrip/spin_graphene_hr.dat" COPYONLY)
+configure_file(spin_graphene.uc "${TEST_ROOT}/bundle_roundtrip/spin_graphene.uc" COPYONLY)
+configure_file(spin_graphene.xyz "${TEST_ROOT}/bundle_roundtrip/spin_graphene.xyz" COPYONLY)
+
+configure_file(spin_graphene_hr.dat "${TEST_ROOT}/run_config_equivalence/spin_graphene_hr.dat" COPYONLY)
+configure_file(spin_graphene.uc "${TEST_ROOT}/run_config_equivalence/spin_graphene.uc" COPYONLY)
+configure_file(spin_graphene.xyz "${TEST_ROOT}/run_config_equivalence/spin_graphene.xyz" COPYONLY)
+
 
 set(MAIN_LIBRARY wannierlib)
 

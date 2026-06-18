@@ -18,6 +18,10 @@
 #include "gauge.hpp"
 #include "local_operators.hpp"
 #include "checks.hpp"
+#include "bundle_writer.hpp"
+#include "run_config.hpp"
+#include "win_parser.hpp"
+#include "qe_xml_parser.hpp"
 #include <set>
 #include <stdexcept>
 
@@ -135,6 +139,260 @@ static void run_checks(const W2SP_arguments& args, const string& opname,
 }
 
 /**
+ * @brief Collect the wannier sites (orbital positions + spin tag) for the manifest.
+ * @param model loaded tight-binding model
+ * @return wannier sites in orbital order
+ */
+static std::vector<WannierSite> collect_wannier_sites(tbmodel& model)
+{
+    std::vector<WannierSite> sites;
+    const auto id2spin = model.map_id2spin();
+    int idx = 0;
+    for (const auto& orb : model.orbPos_list)
+    {
+        WannierSite s;
+        s.index = idx;
+        s.label = std::get<0>(orb);
+        s.cart  = std::get<1>(orb);
+        s.spin  = id2spin.count(idx) ? id2spin.at(idx) : 0;
+        sites.push_back(s);
+        ++idx;
+    }
+    return sites;
+}
+
+/**
+ * @brief Bundle (provenance) output mode: emit primitive operators + manifest.
+ * @param args parsed CLI arguments (mode == "bundle")
+ * @return exit code
+ *
+ * Builds the same primitive-cell operators as the CSR path but, instead of
+ * expanding them into a supercell, writes them as _hr.dat-format data files inside
+ * a `<LABEL>.w2sp/` bundle alongside a JSON manifest. The supercell dimensions are
+ * not used. lsquant rebuilds the Hamiltonian/supercell from the bundle.
+ */
+static int run_bundle_mode(const W2SP_arguments& args)
+{
+    const string in_prefix = args.input_prefix();
+    const string f_uc  = in_prefix + ".uc";
+    const string f_xyz = in_prefix + ".xyz";
+    const string f_hr  = in_prefix + "_hr.dat";
+    const string f_ws  = in_prefix + "_wsvec.dat";
+
+    const bool need_positions = !args.operators.empty();
+
+    bool missing = false;
+    if (!file_exists(f_hr))
+    {
+        cerr << args.program_name << ": error: required input file '" << f_hr << "' not found\n";
+        missing = true;
+    }
+    if (need_positions)
+        for (const string& f : {f_uc, f_xyz})
+            if (!file_exists(f))
+            {
+                cerr << args.program_name << ": error: operator generation requires '" << f << "'\n";
+                missing = true;
+            }
+    for (const auto& nf : args.op_files)
+        if (!file_exists(nf.second))
+        {
+            cerr << args.program_name << ": error: --op-file '" << nf.first
+                 << "': file '" << nf.second << "' not found\n";
+            missing = true;
+        }
+    if (missing) return 1;
+
+    cout << "Using " << args.label << " as the system's identification label (bundle mode)\n";
+
+    tbmodel model;
+    if (file_exists(f_xyz)) model.readOrbitalPositions(f_xyz);
+    if (file_exists(f_uc))  model.readUnitCell(f_uc);
+    model.readWannierModel(f_hr);
+
+    const bool wsvec_applied = file_exists(f_ws);
+    if (wsvec_applied)
+    {
+        cout << "Applying Wigner-Seitz correction from " << f_ws << "\n";
+        model.applyWsvec(f_ws);
+    }
+
+    SystemProvenance prov;
+    prov.num_wann = model.hl.WannierBasisSize();
+    if (file_exists(f_uc)) { prov.has_lattice = true; prov.lattice = model.lat_vecs; }
+    if (file_exists(f_xyz)) prov.wannier_sites = collect_wannier_sites(model);
+
+    // Wannier90 provenance from the .win file (config-specified path, else
+    // <prefix>.win). Absent or unparsable => the manifest block stays null.
+    const string f_win_prov = !args.win_path.empty() ? args.win_path : (in_prefix + ".win");
+    if (file_exists(f_win_prov))
+    {
+        try { prov.wann = parse_win_provenance(f_win_prov); }
+        catch (const std::exception& e)
+        {
+            cerr << args.program_name << ": warning: could not parse .win provenance ("
+                 << f_win_prov << "): " << e.what() << "\n";
+        }
+    }
+
+    // DFT (Quantum ESPRESSO) provenance from data-file-schema.xml. Only parsed
+    // when a path was given (no default location); absent/unparsable => null.
+    if (!args.qe_xml_path.empty())
+    {
+        if (file_exists(args.qe_xml_path))
+        {
+            try { prov.dft = parse_qe_xml(args.qe_xml_path); }
+            catch (const std::exception& e)
+            {
+                cerr << args.program_name << ": warning: could not parse QE XML provenance ("
+                     << args.qe_xml_path << "): " << e.what() << "\n";
+            }
+        }
+        else
+            cerr << args.program_name << ": warning: QE XML provenance file '"
+                 << args.qe_xml_path << "' not found\n";
+    }
+
+    std::vector<BundleOperator> ops;
+
+    // Hamiltonian (always).
+    {
+        BundleOperator op;
+        op.name = "HAM";
+        op.desc = describe("hamiltonian", "", "eV", "wannier90 _hr.dat");
+        if (args.emit_descriptor)
+        {
+            double emin = 0.0, emax = 0.0;
+            if (read_eig_bounds(in_prefix + ".eig", emin, emax))
+            {
+                op.desc.has_bounds = true; op.desc.a = emin; op.desc.b = emax;
+                op.desc.provenance += "; bounds from .eig";
+            }
+            else
+                cerr << args.program_name << ": note: bundle mode skips Lanczos bounds "
+                        "(they need k-sampling); provide " << in_prefix << ".eig for HAM bounds\n";
+        }
+        op.hl = model.hl;
+        ops.push_back(op);
+    }
+
+    // Requested generated operators (velocity / spin / spin-current).
+    for (const auto& opname : args.operators)
+    {
+        hopping_list h;
+        if (!build_operator(model, opname, h))
+        {
+            cerr << args.program_name << ": error: operator '" << opname << "' is not supported by this build\n";
+            return 1;
+        }
+        BundleOperator op;
+        op.name = opname;
+        op.desc = op_descriptor(opname);
+        op.hl   = h;
+        ops.push_back(op);
+    }
+
+    // External operators ingested verbatim from _hr.dat-format files.
+    for (const auto& nf : args.op_files)
+    {
+        BundleOperator op;
+        op.name = nf.first;
+        op.desc = describe("external", nf.first, "", "ingested from " + nf.second);
+        op.hl   = model.readOperatorModel(nf.second);
+        ops.push_back(op);
+    }
+
+    try {
+        // Exact spin operators via the gauge transform (same primitive builder as the CSR path).
+        if (args.exact_spin)
+        {
+            const string f_spn = in_prefix + ".spn";
+            const string f_umat = in_prefix + "_u.mat";
+            if (!file_exists(f_spn) || !file_exists(f_umat))
+            {
+                cerr << args.program_name << ": error: --exact-spin requires " << f_spn
+                     << " and " << f_umat << "\n";
+                return 1;
+            }
+            gauge_data g = read_gauge(in_prefix);
+            hopping_list rawH = create_hopping_list(read_wannier_file(f_hr));
+            if (g.num_wann != rawH.WannierBasisSize())
+            {
+                cerr << args.program_name << ": error: num_wann mismatch between gauge ("
+                     << g.num_wann << ") and Hamiltonian (" << rawH.WannierBasisSize() << ")\n";
+                return 1;
+            }
+            std::set<hopping_list::cellID_t> Rs;
+            for (const auto& h : rawH.hoppings) Rs.insert(get<0>(h));
+            const std::vector<hopping_list::cellID_t> Rset(Rs.begin(), Rs.end());
+
+            const char* names[3] = {"SXexact", "SYexact", "SZexact"};
+            for (int alpha = 0; alpha < 3; ++alpha)
+            {
+                hopping_list s = exact_spin_operator(g, alpha, Rset);
+                if (wsvec_applied) s = apply_wsvec(s, read_wsvec(f_ws));
+                BundleOperator op;
+                op.name = names[alpha];
+                op.desc = describe("spin", string(1, "XYZ"[alpha]), "hbar/2",
+                                   "exact gauge transform V^dag S_B V from .spn");
+                op.hl   = s;
+                ops.push_back(op);
+            }
+        }
+
+        // Orbital angular momentum via the projector route.
+        if (args.orbital_l)
+        {
+            const string f_amn = in_prefix + ".amn";
+            const string f_win = in_prefix + ".win";
+            const string f_umat = in_prefix + "_u.mat";
+            if (!file_exists(f_amn) || !file_exists(f_umat) || !file_exists(f_win))
+            {
+                cerr << args.program_name << ": error: --orbital-L requires " << f_amn
+                     << ", " << f_umat << " and " << f_win << "\n";
+                return 1;
+            }
+            const std::vector<int> shells = parse_projection_shells(f_win);
+            gauge_data g = read_gauge(in_prefix);
+            amn_data   A = read_amn(f_amn);
+            hopping_list rawH = create_hopping_list(read_wannier_file(f_hr));
+            std::set<hopping_list::cellID_t> Rs;
+            for (const auto& h : rawH.hoppings) Rs.insert(get<0>(h));
+            const std::vector<hopping_list::cellID_t> Rset(Rs.begin(), Rs.end());
+
+            const char* names[3] = {"LX", "LY", "LZ"};
+            for (int alpha = 0; alpha < 3; ++alpha)
+            {
+                hopping_list L = orbital_L_operator(g, A, shells, alpha, Rset);
+                if (wsvec_applied) L = apply_wsvec(L, read_wsvec(f_ws));
+                BundleOperator op;
+                op.name = names[alpha];
+                op.desc = describe("orbital_L", string(1, "XYZ"[alpha]), "hbar",
+                                   "projector route C=A^dag V, C^dag L_local C");
+                op.hl   = L;
+                ops.push_back(op);
+            }
+        }
+    } catch (const std::exception& e) {
+        cerr << args.program_name << ": error: " << e.what() << "\n";
+        return 1;
+    }
+
+    BundleSpec spec;
+    spec.label = args.label;
+    spec.truncation_threshold = args.has_truncation
+        ? args.truncation_threshold : std::numeric_limits<double>::epsilon();
+    spec.ndegen_applied = true;
+    spec.wsvec_applied = wsvec_applied;
+    if (wsvec_applied) spec.wsvec_src = f_ws;   // copied verbatim into the bundle
+
+    const string bundle_dir = write_bundle(spec, prov, ops, args.output_dir);
+    cout << "Wrote bundle with " << ops.size() << " operator(s) -> " << bundle_dir << "\n";
+    cout << "  manifest: " << bundle_dir << "/manifest.json\n";
+    return 0;
+}
+
+/**
  * @brief Main entry point.
  * @param argc argument count
  * @param argv argument vector
@@ -149,6 +407,30 @@ int main(int argc, char* argv[])
         case W2SP_arguments::EXIT_ERROR: return 1;  // bad arguments
         case W2SP_arguments::PROCEED:    break;
     }
+
+    // Config-driven bundle runs: a run.json supplies label/operators/output/
+    // provenance instead of the positional CLI. It overrides only the keys it
+    // sets, then drives the same run_bundle_mode path below.
+    if (!args.config_path.empty())
+    {
+        RunConfig cfg;
+        try { cfg = read_run_config(args.config_path); }
+        catch (const std::exception& e)
+        {
+            cerr << args.program_name << ": error: " << e.what() << "\n";
+            return 1;
+        }
+        cfg.apply_to(args);
+        if (!cfg.has_mode) args.mode = "bundle";        // --config drives bundle mode by default
+        if (args.label.empty())
+        {
+            cerr << args.program_name << ": error: run.json must set a non-empty \"label\"\n";
+            return 1;
+        }
+    }
+
+    if (args.mode == "bundle")
+        return run_bundle_mode(args);
 
     const string in_prefix = args.input_prefix();   // <project_dir>/<seed>, defaults to LABEL
     const string f_uc  = in_prefix + ".uc";
