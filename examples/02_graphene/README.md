@@ -60,24 +60,21 @@ $H(\mathbf{R})$), its lattice vectors `graphene.uc`, and its orbital positions
 `graphene.xyz`. The next steps read those same three files, once as the source of
 the supercell and once as the source of the exact reference.
 
-## Step 2: describe the run in an input file, then run it
+## Step 2: write the input file and run it
 
 The operator here is the Hamiltonian itself: `wannier2sparse` replicates every
 non-zero $H_{ij}(\mathbf{R})$ across the supercell and PBC-wraps it into one sparse
-matrix. The recommended way to drive that is a `.w2s` input file: a JSON document
-(with `//` comments allowed) that records the options in one validated place.
+matrix. Put
 
-```bash
-wannier2sparse --create "graphene 80 80 1" -inp graphene   # 1. write graphene.w2s
-wannier2sparse graphene.w2s                                # 2. run -> graphene.HAM.CSR
+```json
+{ "label": "graphene", "mode": "sparse", "supercell": [80, 80, 1] }
 ```
 
-The run writes `graphene.HAM.CSR` and a JSON run receipt `graphene.out` (the
-resolved options, timing, peak memory, and the input files behind each operator).
-Prefer the input file because it is self-documenting and reproducible; the older
-one-line positional form `wannier2sparse graphene 80 80 1` gives byte-identical
-output. Edit `graphene.w2s` directly to add operators or change the supercell, then
-re-run it.
+in `graphene.w2s` and run it:
+
+```bash
+wannier2sparse -x graphene.w2s        # -> graphene.HAM.CSR
+```
 
 ## Step 3: the exact bands have no supercell and no noise
 
@@ -129,12 +126,9 @@ supercell is small and the mesh comparison is what keeps the coarse density hone
 
 ## References and links
 
+- Graphene electronic properties: A. H. Castro Neto et al., Rev. Mod. Phys. 81,
+  109 (2009), [arXiv:0709.1163](https://arxiv.org/abs/0709.1163).
 - wannier2sparse source and documentation: https://github.com/adamecius/wannier2sparse
 - Operator and gauge conventions: docs/conventions.md and docs/operators.md.
 - Wannier functions: N. Marzari et al., Rev. Mod. Phys. 84, 1419 (2012),
-  arXiv:1112.5411. Wannier90: G. Pizzi et al., J. Phys. Condens. Matter 32,
-  165902 (2020), arXiv:1907.09788.
-- Transport methodology: Z. Fan, J. H. Garcia, A. W. Cummings et al., Linear
-  scaling quantum transport methodologies, Phys. Rep. 903, 1 (2021),
-  arXiv:1811.07387.
-- Installation: see the main README of the repository.
+  [arXiv:1112.5411](https://arxiv.org/abs/1112.5411).

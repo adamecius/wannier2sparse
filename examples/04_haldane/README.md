@@ -65,19 +65,20 @@ step reads these files.
 ## Step 2: describe the run in an input file, then run it
 
 The operator we expand is $H(\mathbf{R})$ itself, the Haldane Hamiltonian, complex
-entries and all. The recommended way to drive the expansion is a `.w2s` input file:
-a JSON document (with `//` comments allowed) that records every option in one
-validated, reproducible place.
+entries and all. Put
+
+```json
+{ "label": "haldane", "mode": "sparse", "supercell": [80, 80, 1] }
+```
+
+in `haldane.w2s` and run it:
 
 ```bash
-wannier2sparse --create "haldane 80 80 1" -inp haldane   # 1. write haldane.w2s
-wannier2sparse haldane.w2s                               # 2. run -> haldane.HAM.CSR
+wannier2sparse -x haldane.w2s        # -> haldane.HAM.CSR
 ```
 
 This replicates every nonzero $H_{ij}(\mathbf{R})$ across the supercell, PBC-wraps
-it, and writes `haldane.HAM.CSR` plus a JSON run receipt `haldane.out`. The input
-file is a durable record of the run; prefer it over the older positional one-liner
-`wannier2sparse haldane 80 80 1`, which gives byte-identical output.
+it, and writes `haldane.HAM.CSR`.
 
 ## Step 3: the complex hopping has opened a gap
 
@@ -133,7 +134,7 @@ with $20$ meV Gaussian broadening on the Fermi sweep.
 The quantization is what "topological" means operationally: the plateau height is
 an integer pinned by the global structure of the occupied band, immune to the
 exact value of $t_2$ or $\phi$ as long as the gap stays open. The same fingerprint
-reappears in Tutorial 9 for a real material: PdSe$_2$ is trivial at its Fermi-level
+reappears in Tutorial 5 for a real material: PdSe$_2$ is trivial at its Fermi-level
 gap, but a higher, topological gap shows a flat, near-quantized **spin** Hall
 plateau at $+0.94\,e^2/h$ — the same integer-step signature, in the spin channel.
 
@@ -151,24 +152,17 @@ plateau at $+0.94\,e^2/h$ — the same integer-step signature, in the spin chann
   anomalous Hall conductivity is a quantized plateau at $+1\,e^2/h$ across the
   gap — an exact integer, the signature this model was built to show.
 
-Tutorial 9 (`examples/example_9_SHC_in_PdSe2`) follows that last thread: it builds
+Tutorial 5 (`examples/05_wannier_shc_pdse2`) follows that last thread: it builds
 the velocity and spin operators from a real spin-orbit model and computes the
 intrinsic spin Hall conductivity, where the off-diagonal velocity matrix elements
 that this gap hinted at carry the Berry connection.
 
 ## References and links
 
-- wannier2sparse source and documentation: https://github.com/adamecius/wannier2sparse
+- F. D. M. Haldane, Phys. Rev. Lett. 61, 2015 (1988): a quantum Hall effect without
+  Landau levels — the model of this tutorial.
+- Anomalous Hall effect (the quantized plateau): N. Nagaosa, J. Sinova, S. Onoda,
+  A. H. MacDonald, N. P. Ong, Rev. Mod. Phys. 82, 1539 (2010),
+  [arXiv:0904.4154](https://arxiv.org/abs/0904.4154).
 - Operator and gauge conventions: docs/conventions.md and docs/operators.md.
-- Wannier functions: N. Marzari et al., Rev. Mod. Phys. 84, 1419 (2012),
-  arXiv:1112.5411. Wannier90: G. Pizzi et al., J. Phys. Condens. Matter 32,
-  165902 (2020), arXiv:1907.09788.
-- Transport methodology: Z. Fan, J. H. Garcia, A. W. Cummings et al., Linear
-  scaling quantum transport methodologies, Phys. Rep. 903, 1 (2021),
-  arXiv:1811.07387.
-- Installation: see the main README of the repository.
-
-## Further reading
-
-- F. D. M. Haldane, Phys. Rev. Lett. 61, 2015 (1988): the model of a quantum Hall
-  effect without Landau levels.
+- wannier2sparse source and documentation: https://github.com/adamecius/wannier2sparse
