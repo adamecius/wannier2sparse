@@ -154,21 +154,32 @@ These operators are derived from `H_ij(R)` directly and need only `.uc`, `.xyz`,
 - **Hamiltonian `H_ij(R)`** — read from `<seed>_hr.dat`, divided by `ndegen(R)`
   on ingest ([create_hopping_list](../include/hopping_list.hpp)); optional
   Wigner-Seitz minimum-image refinement from `_wsvec.dat`. Units eV.
-- **Velocity / current `V_d = −i · dr_d · H`** — each hopping is multiplied by the
-  Cartesian displacement between its initial and final Wannier centers
-  (`r_j + R − r_i`), so it needs the centers (`.xyz`) and lattice (`.uc`). Units
-  eV·Å. [createHoppingCurrents_list](../include/tbmodel.hpp).
-  - **Warning — interband quantities need the Berry connection.** This geometric
-    velocity is the gradient `∂H/∂k` (plus the diagonal Wannier centers). It gives
-    the correct band group velocity and is sufficient for the DOS and the
-    longitudinal `σ_xx`. It is **not** sufficient for interband responses
-    (anomalous/spin Hall): the off-diagonal velocity matrix elements `⟨n|v|m⟩`
-    require the inter-Wannier Berry connection `A_d(R)=⟨0i|r_d|Rj⟩`. The full
-    **covariant velocity** is `v_d(R) = i(R·lat)_d H(R) − i[H, A_d](R)`, with
-    `A_d(R)` from Wannier90's `<seed>_r.dat` (`write_rmn=.true.`). To-do: a
-    `--covariant-velocity` route that reads `_r.dat` and adds the `−i[H,A_d]`
-    commutator; until then, build it externally and ingest via `--op-file`, and
-    verify the sign/normalization against Wannier90 `postw90/get_oper.F90`
+- **Velocity / current** — a three-rung ladder selected by `--velocity-mode`
+  (`bare` | `berry_connection` | `covariant`), applied to `VX/VY/VZ` *and* to the
+  velocity inside any spin current `J=½{V,S}`. All units eV·Å.
+  [createHoppingCurrents_list / createCovariantVelocity_list](../include/tbmodel.hpp).
+
+  | mode | formula | needs | use |
+  |------|---------|-------|-----|
+  | `bare` | `v_d(R) = −i(R·lat)_d H(R)` | `_hr.dat`, `.uc` | pure gradient ∂H/∂k; topology-only |
+  | `berry_connection` *(default)* | `v_d(R) = −i(R·lat + Δr_ij)_d H(R)` | + `.xyz` | adds diagonal Wannier centres; = `bare − i[H,A_diag]` |
+  | `covariant` | `v_d(R) = −i(R·lat)_d H(R) − i[H, A_d](R)` | + `_r.dat` | full Berry connection `A_d(R)=⟨0i|r_d|Rj⟩` |
+
+  - The default (`berry_connection`) is **byte-identical** to the historical
+    one-argument velocity, so every `VX/VY` golden is preserved.
+  - **Interband quantities need the Berry connection.** `bare`/`berry_connection`
+    give the correct band group velocity and are sufficient for the DOS and `σ_xx`.
+    For interband responses (anomalous/spin Hall) the off-diagonal `⟨n|v|m⟩` carry
+    the inter-Wannier dipoles, so prefer `covariant`. It reads `A_d(R)` from
+    Wannier90's `<seed>_r.dat` (`write_rmn=.true.`; override the path with
+    `--r-dat`) and forms the standard Wang–Yates–Souza–Vanderbilt covariant
+    velocity `∂_d H + i[H,A_d]` (here in the tool's overall `−i` sign convention).
+    Because `[H,A_diag]_ij=(r_j−r_i)H_ij`, the `covariant` mode reduces exactly to
+    `berry_connection` when `A_d` is diagonal — the off-diagonal part is the new
+    physics. **Pitfall:** `H` and `_r.dat` must come from the *same* Wannier90 run
+    (same gauge); mixing an `_r.dat` from a different gauge (e.g. transcoded from
+    another code's position matrix) silently corrupts the off-diagonal correction.
+    The sign/normalization follows Wannier90 `postw90/get_oper.F90`
     (`get_AA_R`)/`berry.F90`.
 - **Density** — keep onsite (`R=0`) terms, zero translations.
   [createHoppingDensity_list](../include/tbmodel.hpp).

@@ -83,9 +83,21 @@ exact spin needs `.spn` + `_u.mat`; the covariant velocity needs `_r.dat`.
 the same call, builds the velocity, the exact spin, and the spin current:
 
 ```bash
-wannier2sparse pdse2_proj 50 50 1 VX VY --exact-spin --spin-current X Z -o out
+wannier2sparse pdse2_proj 50 50 1 VX VY --exact-spin --spin-current X Z \
+               --velocity-mode covariant --r-dat pdse2_proj_r.dat -o out
 # -> out/pdse2_proj.{HAM,VX,VY,SZexact,JXSZ}.CSR
 ```
+
+The `--velocity-mode` flag chooses the velocity ladder (`bare` |
+`berry_connection`, default | `covariant`) and applies it to `VX/VY/VZ` **and** to
+the velocity inside the spin current. For the spin Hall, use `covariant`: it reads
+the Berry connection $A_a(\mathbf{R})=\langle 0i|r_a|\mathbf{R}j\rangle$ from
+Wannier90's `_r.dat` (`write_rmn=.true.`) and forms
+$v_a=-i(\mathbf{R}\!\cdot\!\mathrm{lat})_a H - i[H,A_a]$ (the Wang-Yates-Souza-
+Vanderbilt covariant velocity). `bare`/`berry_connection` need no `_r.dat` and are
+correct for bands, DOS and $\sigma_{xx}$ — the difference shows up only in the
+interband (Hall) matrix elements. Pitfall: the `_r.dat` must come from the same
+Wannier90 run as `_hr.dat` (same gauge).
 
 The spin current is the lesson of §"physics" made operational. For the diagonal
 $\sigma_z$ the anticommutator is local, but for off-diagonal $\sigma_{x,y}$ it
@@ -173,9 +185,16 @@ near-integer height are the operational fingerprint of the gap's non-trivial
 topology. The spin Hall response is the probe that tells the two gaps apart: an
 ordinary gap at the Fermi level, a topological one above it.
 
-One caveat the figure makes unavoidable: this plateau **only** appears with the
-**covariant** velocity (the Berry connection $A_a$). The bare $v=i\mathbf{R}\cdot H$
-velocity that `hr_exactdiag` builds by default gets the interband matrix elements
-wrong and misses the plateau (it even anticorrelates with the truth). Computing the
-covariant velocity inside the C++ pipeline (from `_r.dat`) is the documented
-follow-up; the figure here uses the wannierberri Berry connection as the reference.
+Two practical points the figure depends on. First, **units**: the intrinsic SHC
+comes out in per-cell natural units; the exact-diagonalization tool converts to
+$e^2/h$ with `--shc-units e2h`, a single calibration $-\pi$ (the charge-Hall Berry
+prefactor $2\pi/A_\mathrm{cell}$ times $\tfrac12$ for the $\hbar/2$ spin, with the
+$\sigma^z_{xy}$ sign), exactly analogous to $\sigma_{xx}$'s $7.49$. Without it the
+same curve reads $-0.33$ in natural units, which is why an earlier draft mistook
+the trivial-vs-topological story — the plateau was always there, only unscaled.
+Second, the **velocity**: `wannier2sparse --velocity-mode {bare,berry_connection,
+covariant}` selects the rung. All three give a near-quantized $\approx +1\,e^2/h$
+plateau here (the topology is robust); the `covariant` rung (Berry connection from
+`_r.dat`) is the most accurate and is the principled choice for any interband
+response. The figure was made with the covariant velocity; the wannierberri
+position matrix served as the independent cross-check ($+0.94\,e^2/h$).

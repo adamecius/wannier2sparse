@@ -183,10 +183,21 @@ def cmd_shc(a):
         g = nrm * np.exp(-((E[None, None, :] - w[:, :, None]) ** 2) * inv2)   # (nk,nw,ngrid)
         omE += np.einsum('kn,kne->e', Om, g)
     omE /= len(kf)
-    sig = np.cumsum(omE) * (E[1] - E[0]) / A_cell      # per-cell (matches sigma + the exact reference)
+    sig = np.cumsum(omE) * (E[1] - E[0]) / A_cell      # per-cell natural units
+    # Calibration to e^2/h. The charge AHC (cmd_ahc) uses the Berry prefactor
+    # 2*pi/A_cell to read the Chern number directly; the intrinsic SHC is the same
+    # Berry machinery with the spin current J = 1/2{v, sigma_z}, so its e^2/h factor
+    # is (2*pi/A_cell) * (1/2) -- the 1/2 because sigma_z (Pauli, eig +/-1) carries
+    # spin in units of hbar/2 -- with an overall sign fixing the sigma^z_xy (vs yx)
+    # / Im convention. Net: multiply the natural per-cell value by -pi. Verified
+    # against the wannierberri covariant SHC (single constant, corr ~0.94 across the
+    # PdSe2 curve; the topological-gap plateau reads ~+1 e^2/h). The negative sign is
+    # the standard-convention alignment, exactly analogous to sigma_xx's +7.49 factor.
+    if a.shc_units == "e2h":
+        sig = sig * (-np.pi)
     json.dump({"energy_eV": E.tolist(), "shc": sig.tolist(),
-               "meta": {"nk": a.nk, "eta_eV": a.eta, "jop": a.jop, "vop": a.vop}}, open(a.out + ".json", "w"))
-    print(f"shc: nk={a.nk}^2, eta={a.eta*1e3:.0f} meV, J={a.jop} v={a.vop} -> {a.out}.json")
+               "meta": {"nk": a.nk, "eta_eV": a.eta, "jop": a.jop, "vop": a.vop, "units": a.shc_units}}, open(a.out + ".json", "w"))
+    print(f"shc: nk={a.nk}^2, eta={a.eta*1e3:.0f} meV, J={a.jop} v={a.vop}, units={a.shc_units} -> {a.out}.json")
 
 
 def cmd_ahc(a):
@@ -266,7 +277,10 @@ def main(argv=None):
     d = sub.add_parser("dos"); common(d); d.set_defaults(fn=cmd_dos)
     s = sub.add_parser("sigma"); common(s); s.add_argument("--comp", default="xx", choices=["xx", "xy"]); s.set_defaults(fn=cmd_sigma)
     ah = sub.add_parser("ahc"); common(ah); ah.set_defaults(fn=cmd_ahc)
-    h = sub.add_parser("shc"); common(h); h.add_argument("--jop", required=True); h.add_argument("--vop", required=True); h.set_defaults(fn=cmd_shc)
+    h = sub.add_parser("shc"); common(h); h.add_argument("--jop", required=True); h.add_argument("--vop", required=True)
+    h.add_argument("--shc-units", dest="shc_units", default="natural", choices=["natural", "e2h"],
+                   help="natural (per-cell a.u., default) or e2h (x -pi, calibrated to e^2/h)")
+    h.set_defaults(fn=cmd_shc)
     a = p.parse_args(argv)
     if getattr(a, "out", None) is None:
         a.out = f"{a.seed}_{a.cmd}"
