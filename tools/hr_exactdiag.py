@@ -152,6 +152,7 @@ def cmd_shc(a):
        Omega_n(k) = sum_{m!=n} 2 Im[<n|J|m><m|v|n>]/(E_n-E_m)^2."""
     iRH, H = read_hr(f"{a.seed}_hr.dat")
     iRJ, J = read_hr(a.jop); iRV, V = read_hr(a.vop)   # each operator keeps its own R-grid
+    A_cell = abs(read_uc(f"{a.seed}.uc")[0, 0] * read_uc(f"{a.seed}.uc")[1, 1])  # per-cell area (2D)
     E = np.linspace(a.emin, a.emax, a.ngrid); omE = np.zeros(a.ngrid)
     nrm = 1 / (np.sqrt(2 * np.pi) * a.eta); inv2 = 1 / (2 * a.eta ** 2); tol = 1e-4
     kx = (np.arange(a.nk) + .5) / a.nk
@@ -169,7 +170,7 @@ def cmd_shc(a):
         g = nrm * np.exp(-((E[None, None, :] - w[:, :, None]) ** 2) * inv2)   # (nk,nw,ngrid)
         omE += np.einsum('kn,kne->e', Om, g)
     omE /= len(kf)
-    sig = np.cumsum(omE) * (E[1] - E[0])
+    sig = np.cumsum(omE) * (E[1] - E[0]) / A_cell      # per-cell (matches sigma + the exact reference)
     json.dump({"energy_eV": E.tolist(), "shc": sig.tolist(),
                "meta": {"nk": a.nk, "eta_eV": a.eta, "jop": a.jop, "vop": a.vop}}, open(a.out + ".json", "w"))
     print(f"shc: nk={a.nk}^2, eta={a.eta*1e3:.0f} meV, J={a.jop} v={a.vop} -> {a.out}.json")
