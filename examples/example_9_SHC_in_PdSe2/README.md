@@ -121,25 +121,46 @@ $O(\mathbf{k})$ and diagonalizes densely on a k-mesh, with no supercell:
 ../../tools/hr_exactdiag.py bands pdse2_proj --ef -1.3162   # FIG. 1
 ../../tools/hr_exactdiag.py dos   pdse2_proj                # DOS, integral = num_wann
 ../../tools/hr_exactdiag.py shc   pdse2_proj \
-        --jop pdse2_proj_JXSZ_hr.dat --vop pdse2_proj_vy_hr.dat   # intrinsic sigma^z_xy
+        --jop pdse2_proj_JXSZ_hr.dat --vop pdse2_proj_vy_hr.dat \
+        --nk 240 --eta 0.02 --emin -3.0 --emax 1.0 --out pdse2_shc   # intrinsic sigma^z_xy
+../plot_hall.py pdse2_shc.json --out img/pdse2_shc.png --ef -1.3162 \
+        --ylabel '$\sigma^{z}_{xy}$ (natural units)' --gap -0.845 0.495 --gap2 1.175 1.230
 ```
 
-![Intrinsic spin Hall conductivity of PdSe2 versus energy: zero across the gap, a large peak near +1.2 eV](img/pdse2_shc.png)
+![Intrinsic spin Hall conductivity of PdSe2 versus energy: flat and near-zero across the trivial main gap, a large peak at the topological gap near +1.2 eV](img/pdse2_shc.png)
 
-FIG. 2. Intrinsic (Fermi-sea) spin Hall conductivity $\sigma^{z}_{xy}$ of monolayer
-PdSe$_2$ versus $E-E_F$, from `tools/hr_exactdiag.py shc` on the same `_hr.dat`
-operators ($J^{z}_{x}=\tfrac12\{v_x,S_z\}$ and $v_y$; $220\times220$ k-mesh,
-$\eta=20$ meV Gaussian; arbitrary units). Solid blue: $\sigma^{z}_{xy}$; grey band:
-the charge gap $[-0.81,+0.47]$ eV around $E_F$ where $\sigma^{z}_{xy}\approx 0$
-(no spin-Hall plateau, consistent with the trivial $Z_2=0$ classification). The
-large feature near $E-E_F\approx +1.2$ eV is a non-topological spin-Berry-curvature
-peak at a conduction-band near-degeneracy. This is the curve the linear-scaling
-KPM (lsquant Kubo-Bastin, Fermi-sea part) reproduces.
+FIG. 2. Intrinsic (Fermi-sea) spin Hall conductivity $\sigma^{z}_{xy}(E_F)$ of
+monolayer PdSe$_2$ versus $E-E_F$ (natural units; the absolute scale carries one
+$\sigma_{xx}$-style calibration constant, so the peak corresponds to
+$\sim 1\,e^2/h$), from `tools/hr_exactdiag.py shc` on the same `_hr.dat` operators
+($J^{z}_{x}=\tfrac12\{v_x,S_z\}$ and $v_y$). Solid blue with open circles:
+$\sigma^{z}_{xy}$ from the spin-Berry-curvature sum; grey band: the **trivial**
+charge gap $[-0.85,+0.50]$ eV around $E_F$ where $\sigma^{z}_{xy}\approx 0$ (no
+spin-Hall plateau, consistent with $Z_2=0$ at the band-edge gap); orange hatched
+band: the narrow **topological** gap at $E-E_F\approx +1.2$ eV (bands 7|8, width
+$\approx 55$ meV), where the spin-Berry curvature concentrates into the large
+feature. $240\times240$ k-mesh, $\eta=20$ meV Gaussian on the $E_F$ sweep,
+$E_F=-1.3162$ eV. This is the curve the linear-scaling KPM (lsquant Kubo-Bastin,
+Fermi-sea part) reproduces.
 
 This is the framework that turns any reconstructed `_hr.dat` operator set into
 bands, DOS, and Kubo quantities, and it is how the "exact" curve in the spin-Hall
 comparison is produced. The takeaway repeats: feed it the *bare* velocity and the
 intrinsic $\sigma^{z}_{xy}$ comes out anticorrelated with the truth; feed it the
-**covariant** velocity (Berry connection) and it matches. PdSe$_2$ itself is a
-trivial insulator ($Z_2=0$), so the $\sim 1\,e^2/h$ peak near $1.2$ eV is a large
-*non-topological* spin-Berry-curvature feature, not a quantized plateau.
+**covariant** velocity (Berry connection) and it matches.
+
+## Reading the spin Hall: a trivial gap and a topological one
+
+The energy dependence is the lesson, and it is best read against Tutorial 4. In
+the Haldane model a *charge* Hall conductivity locks onto an exact integer
+$e^2/h$ across the gap — a quantized plateau pinned by the Chern number. PdSe$_2$
+differs on both counts. Its **main** gap, the one straddling $E_F$, is trivial
+($Z_2=0$): $\sigma^{z}_{xy}$ stays flat at zero through it, no plateau and no
+quantization. But PdSe$_2$ is not globally trivial. Higher up, a narrow gap in the
+conduction manifold near $E-E_F\approx 1.2$ eV (bands 7|8) carries a non-trivial
+spin-Chern character, and it is there — not at the band edge — that the spin-Berry
+curvature piles up into the large $\sigma^{z}_{xy}$ feature. The spin Hall response
+is the probe that tells the two gaps apart: an ordinary gap at the Fermi level, a
+topological one above it. (A quantized *spin* Hall plateau is not expected even
+there — $\sigma^{z}_{xy}$ is conserved only when $S_z$ commutes with $H$, which
+spin-orbit coupling breaks — but the topology is what concentrates the response.)

@@ -74,6 +74,19 @@ def opk(iR, OR, kf):
     return np.einsum('kr,rij->kij', np.exp(2j * np.pi * (np.atleast_2d(kf) @ iR.T)), OR)
 
 
+def cell_area_2d(lat):
+    """In-plane unit-cell area |a1 x a2|_z for a 2D model (Angstrom^2).
+
+    This is the z-component of the cross product of the first two lattice
+    vectors, a1 x a2 = lat[0,0] lat[1,1] - lat[0,1] lat[1,0]. It reduces to
+    |lat[0,0] lat[1,1]| only for a rectangular cell (off-diagonals zero, e.g.
+    PdSe2); for a non-orthogonal cell (honeycomb a1=(1.5, +s), a2=(1.5, -s))
+    the true area is twice that. Pitfall: using lat[0,0]*lat[1,1] for a
+    honeycomb cell halves the area and so doubles any per-area response
+    (it reported the Haldane Chern plateau as 2 instead of 1)."""
+    return abs(lat[0, 0] * lat[1, 1] - lat[0, 1] * lat[1, 0])
+
+
 # ------------------------------------------------------------------- k-path helper
 DEFAULT_PATH = [("G", (0, 0, 0)), ("X", (.5, 0, 0)), ("S", (.5, .5, 0)),
                 ("Y", (0, .5, 0)), ("G", (0, 0, 0)), ("S", (.5, .5, 0))]
@@ -152,7 +165,7 @@ def cmd_shc(a):
        Omega_n(k) = sum_{m!=n} 2 Im[<n|J|m><m|v|n>]/(E_n-E_m)^2."""
     iRH, H = read_hr(f"{a.seed}_hr.dat")
     iRJ, J = read_hr(a.jop); iRV, V = read_hr(a.vop)   # each operator keeps its own R-grid
-    A_cell = abs(read_uc(f"{a.seed}.uc")[0, 0] * read_uc(f"{a.seed}.uc")[1, 1])  # per-cell area (2D)
+    A_cell = cell_area_2d(read_uc(f"{a.seed}.uc"))  # in-plane cell area |a1 x a2| (2D)
     E = np.linspace(a.emin, a.emax, a.ngrid); omE = np.zeros(a.ngrid)
     nrm = 1 / (np.sqrt(2 * np.pi) * a.eta); inv2 = 1 / (2 * a.eta ** 2); tol = 1e-4
     kx = (np.arange(a.nk) + .5) / a.nk
@@ -174,6 +187,41 @@ def cmd_shc(a):
     json.dump({"energy_eV": E.tolist(), "shc": sig.tolist(),
                "meta": {"nk": a.nk, "eta_eV": a.eta, "jop": a.jop, "vop": a.vop}}, open(a.out + ".json", "w"))
     print(f"shc: nk={a.nk}^2, eta={a.eta*1e3:.0f} meV, J={a.jop} v={a.vop} -> {a.out}.json")
+
+
+def cmd_ahc(a):
+    """Intrinsic anomalous (charge) Hall conductivity sigma_xy in units of e^2/h.
+
+    Berry-curvature / Kubo Fermi-sea form, with the velocity v_a = dH/dk_a built
+    internally from H(R) (v_a(R) = i (R.lat)_a H(R)):
+       Omega_n(k) = -2 Im sum_{m!=n} <n|v_x|m><m|v_y|n> / (E_n - E_m)^2,
+       sigma_xy(E_F) = (2 pi / A_cell) (1/N_k) sum_k sum_{n: E_n<E_F} Omega_n.
+    In a gap this is the Chern number C (a flat, quantized plateau at integer e^2/h).
+    Needs only <seed>_hr.dat and <seed>.uc."""
+    iR, H = read_hr(f"{a.seed}_hr.dat"); lat = read_uc(f"{a.seed}.uc")
+    A_cell = cell_area_2d(lat); Rc = iR @ lat
+    VX = 1j * Rc[:, 0, None, None] * H; VY = 1j * Rc[:, 1, None, None] * H   # v_a(R) = i (R.lat)_a H(R)
+    E = np.linspace(a.emin, a.emax, a.ngrid); omE = np.zeros(a.ngrid)
+    nrm = 1 / (np.sqrt(2 * np.pi) * a.eta); inv2 = 1 / (2 * a.eta ** 2); tol = 1e-4
+    kx = (np.arange(a.nk) + .5) / a.nk
+    KX, KY = np.meshgrid(kx, kx, indexing='ij')
+    kf = np.stack([KX.ravel(), KY.ravel(), np.zeros(a.nk ** 2)], 1)
+    for s in range(0, len(kf), 512):
+        kb = kf[s:s + 512]
+        Hk = opk(iR, H, kb); Hk = 0.5 * (Hk + np.conj(np.transpose(Hk, (0, 2, 1))))
+        w, U = np.linalg.eigh(Hk)
+        vx = np.einsum('kmi,kmn,knj->kij', np.conj(U), opk(iR, VX, kb), U)
+        vy = np.einsum('kmi,kmn,knj->kij', np.conj(U), opk(iR, VY, kb), U)
+        dE = w[:, :, None] - w[:, None, :]; mask = np.abs(dE) > tol
+        Om = np.where(mask, -2 * np.imag(vx * np.transpose(vy, (0, 2, 1))) / np.where(mask, dE ** 2, 1), 0).sum(2)
+        g = nrm * np.exp(-((E[None, None, :] - w[:, :, None]) ** 2) * inv2)
+        omE += np.einsum('kn,kne->e', Om, g)
+    omE /= len(kf)
+    sig = (2 * np.pi / A_cell) * np.cumsum(omE) * (E[1] - E[0])   # e^2/h; in a gap = Chern number
+    json.dump({"energy_eV": E.tolist(), "sigma_xy_e2h": sig.tolist(),
+               "meta": {"nk": a.nk, "eta_eV": a.eta}}, open(a.out + ".json", "w"))
+    print(f"ahc: nk={a.nk}^2, eta={a.eta*1e3:.0f} meV -> {a.out}.json "
+          f"(sigma_xy in e^2/h; a gap plateau at an integer is the Chern number)")
 
 
 # ---------------------------------------------------------------------- internals
@@ -217,6 +265,7 @@ def main(argv=None):
     b.add_argument("--no-plot", action="store_true"); b.set_defaults(fn=cmd_bands)
     d = sub.add_parser("dos"); common(d); d.set_defaults(fn=cmd_dos)
     s = sub.add_parser("sigma"); common(s); s.add_argument("--comp", default="xx", choices=["xx", "xy"]); s.set_defaults(fn=cmd_sigma)
+    ah = sub.add_parser("ahc"); common(ah); ah.set_defaults(fn=cmd_ahc)
     h = sub.add_parser("shc"); common(h); h.add_argument("--jop", required=True); h.add_argument("--vop", required=True); h.set_defaults(fn=cmd_shc)
     a = p.parse_args(argv)
     if getattr(a, "out", None) is None:
