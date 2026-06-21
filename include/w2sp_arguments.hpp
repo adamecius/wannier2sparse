@@ -24,6 +24,8 @@
 #include <iostream>
 #include <cctype>
 
+#include "system_provenance.hpp"   // ManualProvenance (user-declared provenance block)
+
 /**
  * @brief Command-line argument state and parser.
  */
@@ -60,6 +62,15 @@ public:
     double                   truncation_threshold; ///< bundle truncation threshold (manifest)
     std::string              qe_xml_path;     ///< QE data-file-schema.xml for DFT provenance
     std::string              win_path;        ///< .win for Wannier provenance
+    ManualProvenance         manual;          ///< user-declared provenance (input file only)
+    std::string              log_level;       ///< console verbosity: trace|debug|info|warn|error
+    std::string              log_file;        ///< explicit log-file path ("" => default location)
+    bool                     no_log_file;     ///< --no-log-file: console only, no file sink
+    bool                     write_config;    ///< --write: scaffold an input file from the CLI, don't run
+    bool                     create_template; ///< --create-template: write an annotated .w2s template
+    bool                     create_from_string; ///< --create "...": scaffold a .w2s from a CLI line
+    std::string              create_string;   ///< the quoted CLI line passed to --create
+    std::string              create_inp;      ///< -inp NAME: target stem for --create / --create-template
     std::string              program_name;    ///< argv[0]
 
     /**
@@ -69,7 +80,20 @@ public:
         : cellDim({{1, 1, 1}}), output_dir("."), emit_descriptor(false),
           exact_spin(false), orbital_l(false), mode("sparse"),
           has_truncation(false), truncation_threshold(0.0),
+          log_level("info"), no_log_file(false), write_config(false),
+          create_template(false), create_from_string(false),
           program_name("wannier2sparse") {}
+
+    /**
+     * @brief Whether a string ends with a given suffix.
+     * @param s   string to test
+     * @param suf suffix
+     * @return true if s ends with suf
+     */
+    static bool ends_with(const std::string& s, const std::string& suf)
+    {
+        return s.size() >= suf.size() && s.compare(s.size() - suf.size(), suf.size(), suf) == 0;
+    }
 
     /**
      * @brief Resolved input file stem: <project_dir>/<seed>.
@@ -198,11 +222,48 @@ public:
                     return EXIT_ERROR;
                 }
             }
-            else if (a == "--config")
+            else if (a == "--run" || a == "--config" || a == "--input")
             {
-                if (i + 1 >= argc) { error("missing path after '--config'"); return EXIT_ERROR; }
+                if (i + 1 >= argc) { error("missing path after '" + a + "'"); return EXIT_ERROR; }
                 config_path = argv[++i];
             }
+            else if (a == "--write")               { write_config = true; }
+            else if (a == "--create-template")
+            {
+                create_template = true;
+                // Optional NAME: consume the next token unless it is an option.
+                if (i + 1 < argc && argv[i+1][0] != '-') create_inp = argv[++i];
+            }
+            else if (a == "--create")
+            {
+                if (i + 1 >= argc) { error("'--create' needs a quoted command line, e.g. --create \"graphene 50 50 1 VX SZ\""); return EXIT_ERROR; }
+                create_from_string = true;
+                create_string = argv[++i];
+            }
+            else if (a == "-inp" || a == "--inp")
+            {
+                if (i + 1 >= argc) { error("missing name after '" + a + "'"); return EXIT_ERROR; }
+                create_inp = argv[++i];
+            }
+            else if (a == "--verbose")             { log_level = "debug"; }
+            else if (a == "--quiet")               { log_level = "warn"; }
+            else if (a == "--log-level")
+            {
+                if (i + 1 >= argc) { error("missing level after '--log-level' (trace|debug|info|warn|error)"); return EXIT_ERROR; }
+                log_level = argv[++i];
+                if (log_level != "trace" && log_level != "debug" && log_level != "info" &&
+                    log_level != "warn" && log_level != "error")
+                {
+                    error("unknown --log-level '" + log_level + "' (expected trace|debug|info|warn|error)");
+                    return EXIT_ERROR;
+                }
+            }
+            else if (a == "--log-file")
+            {
+                if (i + 1 >= argc) { error("missing path after '--log-file'"); return EXIT_ERROR; }
+                log_file = argv[++i];
+            }
+            else if (a == "--no-log-file")         { no_log_file = true; }
             else if (a == "--bounds")              { emit_descriptor = true; }
             else if (a == "--exact-spin")          { exact_spin = true; }
             else if (a == "--orbital-l" || a == "--orbital-L") { orbital_l = true; }
@@ -221,6 +282,20 @@ public:
             else if (a.size() > 1 && a[0] == '-' && !std::isdigit(static_cast<unsigned char>(a[1])))
                                                    { error("unknown option '" + a + "'"); return EXIT_ERROR; }
             else                                   { positional.push_back(a); }
+        }
+
+        // --create-template / --create are scaffolding actions: they write a `.w2s`
+        // input file and exit, so the positional LABEL N1 N2 N3 contract does not
+        // apply. main acts on them.
+        if (create_template || create_from_string) return PROCEED;
+
+        // The `.w2s` interface: `wannier2sparse input.w2s` runs that input file,
+        // exactly as `--run input.w2s` would. A lone positional with the .w2s suffix
+        // is taken as the input path.
+        if (config_path.empty() && positional.size() == 1 && ends_with(positional[0], ".w2s"))
+        {
+            config_path = positional[0];
+            positional.clear();
         }
 
         // With --config the run.json supplies the label/operators/provenance, so
@@ -284,8 +359,10 @@ private:
 
     void print_usage() const
     {
-        std::cerr << "usage: " << program_name
-                  << " LABEL N1 N2 N3 [OP ... | all] [-o DIR]\n"
+        std::cerr << "usage: " << program_name << " INPUT.w2s\n"
+                  << "       " << program_name << " --create-template [NAME]\n"
+                  << "       " << program_name << " --create \"LABEL N1 N2 N3 [OP ...]\" [-inp NAME]\n"
+                  << "       " << program_name << " LABEL N1 N2 N3 [OP ... | all] [-o DIR]\n"
                   << "       " << program_name << " --help\n";
     }
 
@@ -310,7 +387,20 @@ private:
 "and export the Hamiltonian and operators as sparse (CSR) matrices.\n"
 "\n"
 "USAGE\n"
-"  " << program_name << " LABEL N1 N2 N3 [OP ... | all] [options]\n"
+"  " << program_name << " INPUT.w2s                              run from an input file\n"
+"  " << program_name << " --create-template [NAME]              scaffold an annotated NAME.w2s\n"
+"  " << program_name << " --create \"LABEL N1 N2 N3 [OP...]\" [-inp NAME]   scaffold from a CLI line\n"
+"  " << program_name << " LABEL N1 N2 N3 [OP ... | all] [options]   legacy positional run\n"
+"\n"
+"INPUT FILE (.w2s)\n"
+"  The recommended interface is a JSON `.w2s` input file (// and /* */ comments\n"
+"  allowed). It concentrates every option (label, mode, supercell, operators,\n"
+"  checks, logging, and DFT/Wannier provenance) in one validated, traceable place.\n"
+"  Create one with --create-template (blank, documented) or --create \"...\" (from a\n"
+"  command line), edit it, then run it: `" << program_name << " input.w2s`.\n"
+"  Every run also writes a `<LABEL>.out` JSON receipt: per-step timing, peak memory,\n"
+"  warning/error tally, and the list of operators written with the input files that\n"
+"  produced each (provenance link).\n"
 "\n"
 "ARGUMENTS\n"
 "  LABEL        System label. The tool reads:\n"
@@ -351,9 +441,24 @@ private:
 "                         JSON manifest with provenance to <out>/<LABEL>.w2sp/, for\n"
 "                         lsquant to build the Hamiltonian itself). In bundle mode\n"
 "                         the supercell dimensions are optional and ignored.\n"
-"      --config PATH      Drive a bundle run from a run.json config file instead\n"
-"                         of positional arguments (label, operators, output dir\n"
-"                         and DFT/Wannier provenance sources are read from it).\n"
+"      --run PATH         Run from a `.w2s` (or legacy run.json) input file: label,\n"
+"                         mode, supercell, operators, output dir, checks and DFT/\n"
+"                         Wannier provenance are all read from it. Equivalent to\n"
+"                         passing the file positionally. (--input/--config synonyms.)\n"
+"      --create-template [NAME]\n"
+"                         Write a fully-annotated template to NAME.w2s (default\n"
+"                         template.w2s) and exit. The scaffold is itself runnable.\n"
+"      --create \"CMDLINE\" Parse a quoted command line (LABEL N1 N2 N3 [OP...] ...)\n"
+"                         and serialize the equivalent <stem>.w2s, then exit.\n"
+"  -inp, --inp NAME       Target stem for --create / --create-template (else the\n"
+"                         LABEL from the command line, else 'template').\n"
+"      --write            Do not run; serialize the equivalent input file to\n"
+"                         <output>/<LABEL>.w2s from the positional arguments.\n"
+"      --verbose          Console log level DEBUG (default INFO).\n"
+"      --quiet            Console log level WARN (errors and warnings only).\n"
+"      --log-level LVL    Set console level explicitly: trace|debug|info|warn|error.\n"
+"      --log-file PATH    Write the full log here (default <output>/<LABEL>.run.log).\n"
+"      --no-log-file      Do not write a log file (console only).\n"
 "  -h, --help             Show this help and exit.\n"
 "      --list-operators   List valid operator names and exit.\n"
 "      --version          Show version and exit.\n"
@@ -363,11 +468,14 @@ private:
 "  requested; a Hamiltonian (or an --op-file operator) needs only its _hr.dat.\n"
 "\n"
 "OUTPUT\n"
-"  LABEL.HAM.CSR and one LABEL.<OP>.CSR per requested operator.\n"
+"  LABEL.HAM.CSR and one LABEL.<OP>.CSR per requested operator, plus a LABEL.out\n"
+"  JSON run receipt and (unless --no-log-file) a LABEL.run.log.\n"
 "\n"
 "EXAMPLES\n"
-"  " << program_name << " graphene 50 50 1\n"
-"  " << program_name << " graphene 50 50 1 VX VY SZ\n"
+"  " << program_name << " --create-template graphene        # -> graphene.w2s (edit it)\n"
+"  " << program_name << " graphene.w2s                       # run it\n"
+"  " << program_name << " --create \"graphene 50 50 1 VX SZ\"  # -> graphene.w2s\n"
+"  " << program_name << " graphene 50 50 1                    # legacy direct run\n"
 "  " << program_name << " graphene 50 50 1 all -o out\n";
     }
 };

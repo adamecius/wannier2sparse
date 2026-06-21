@@ -126,6 +126,55 @@ struct WannierProvenance
 };
 
 /**
+ * @brief One manually-declared orbital (used when no .xyz / DFT source is given).
+ *
+ * The user supplies these in the input file's `provenance.manual.orbitals` block so
+ * a model that arrives as a bare `_hr.dat` (no Wannier90 / QE side-files) can still
+ * record which basis function each index is and where it sits. Positions are in
+ * Angstrom, matching the .xyz / lattice convention used everywhere else.
+ */
+struct ManualOrbital
+{
+    int                  index;    ///< zero-based orbital index
+    std::string          label;    ///< e.g. "Fe-d_xy", "pz"
+    std::string          element;  ///< chemical species, e.g. "Fe"
+    std::array<double,3> xyz;      ///< Cartesian position (Angstrom)
+    ManualOrbital() : index(0), xyz({{0,0,0}}) {}
+};
+
+/**
+ * @brief User-declared provenance, supplied verbatim in the input file.
+ *
+ * Whereas DftProvenance / WannierProvenance are *parsed* from QE/W90 side-files,
+ * this block is what the user types into the `.w2s` input under
+ * `provenance.manual`. It exists for the common case of a model that is only a
+ * `_hr.dat` with no machine-readable DFT/Wannier sources: the user can still pin
+ * the pseudopotentials, k-point grid, basis set, exchange-correlation functional,
+ * plane-wave cutoff and the per-orbital identity/position. Every field is optional;
+ * the block is echoed unchanged into the bundle manifest and the `.out` receipt so
+ * the record of *how this model was made* travels with the operators. Nothing here
+ * affects the numerics — it is documentation that is validated for shape only.
+ */
+struct ManualProvenance
+{
+    bool                     present;          ///< false => omitted from manifest/.out
+    std::string              code;             ///< DFT/Wannier code + version, free text
+    std::vector<PseudoInfo>  pseudopotentials; ///< species -> file (z_valence optional)
+    bool                     has_kpoint_grid;
+    std::array<int,3>        kpoint_grid;      ///< SCF k-point mesh
+    std::string              basis;            ///< basis-set description (free text)
+    std::string              xc_functional;    ///< e.g. "PBE"
+    bool                     has_ecutwfc;
+    double                   ecutwfc_Ry;       ///< plane-wave cutoff (Ry)
+    std::vector<ManualOrbital> orbitals;       ///< per-index basis identity + position
+    std::string              notes;            ///< any extra free-text provenance
+
+    ManualProvenance()
+        : present(false), has_kpoint_grid(false), kpoint_grid({{0,0,0}}),
+          has_ecutwfc(false), ecutwfc_Ry(0.0) {}
+};
+
+/**
  * @brief One wannier site (orbital), from the .xyz file.
  */
 struct WannierSite
@@ -149,6 +198,7 @@ struct SystemProvenance
 
     DftProvenance     dft;
     WannierProvenance wann;
+    ManualProvenance  manual;        ///< user-declared provenance from the input file
 
     SystemProvenance()
         : has_lattice(false),

@@ -131,19 +131,18 @@ records that it was applied once already.
 What the CSR discards, the manifest keeps: the lattice and reciprocal vectors, the
 Wannier sites with their spin labels, the crystal symmetry operations, and the DFT
 and Wannier conditions behind the model. The last two are read from a Quantum
-ESPRESSO `data-file-schema.xml` and a Wannier90 `.win`, named in a small `run.json`
-that can drive the whole run in place of the positional arguments:
+ESPRESSO `data-file-schema.xml` and a Wannier90 `.win`, named in a small `.w2s`
+input file that drives the whole run. Scaffold it with `--create`, add the
+provenance paths, then run it:
 
 ```bash
-cat > run.json <<'JSON'
-{ "label": "graphene", "seed": "graphene", "output_dir": "out", "mode": "bundle",
-  "operators": ["VX", "SZ"],
-  "provenance": { "qe_xml": "scf.save/data-file-schema.xml", "win": "graphene.win" } }
-JSON
-$W2SP_BIN --config run.json
+$W2SP_BIN --create "graphene 1 1 1 VX SZ --mode bundle" -inp graphene   # writes graphene.w2s
+# add provenance paths to graphene.w2s:
+#   "provenance": { "qe_xml": "scf.save/data-file-schema.xml", "win": "graphene.win" }
+$W2SP_BIN graphene.w2s
 ```
 
-This produces a bundle byte-identical to the positional call above. If a provenance
+This produces a bundle byte-identical to the direct command above. If a provenance
 file is absent, its manifest block is `null` and `provenance_complete` is `false`,
 so the bundle is always well-formed; supply both and a consumer can rebuild not
 only $H(\mathbf{k})$ but the physical context it lives in. That the unexpanded
@@ -154,6 +153,47 @@ recovers the graphene Dirac touching at $E=0$.
 ```bash
 ctest --test-dir ../build -R bundle_hk_rebuild --output-on-failure          # PASS
 ```
+
+## One input file, and a record of what the run did
+
+The same `.w2s` that drives a bundle also drives a supercell CSR run, so a whole
+calculation lives in one traceable file instead of a long command line. The
+`"mode"` key picks the output; everything else reads the same. Scaffold the file
+from a short command with `--create`, edit it, then run it:
+
+```bash
+$W2SP_BIN --create "graphene 80 80 1 VX SZ -o out" -inp graphene   # writes graphene.w2s
+$W2SP_BIN graphene.w2s
+```
+
+```json
+{ "label": "graphene", "mode": "sparse", "output_dir": "out",
+  "supercell": [80, 80, 1], "operators": ["VX", "SZ"] }
+```
+
+This writes the same `out/graphene.HAM.CSR` and operator files a direct
+`graphene 80 80 1 VX SZ` would. Each run also leaves a log at `out/graphene.run.log`
+and ends with a summary of where the time and memory went, so a long expansion is
+never a silent black box:
+
+```
+[INFO ] ==== run summary ====
+[INFO ] total wall time: 1.204 s
+[INFO ]   load model            0.012 s
+[INFO ]   write HAM             1.100 s
+[INFO ]   write operators       0.090 s
+[INFO ] peak memory: 142.5 MiB
+[INFO ] warnings: 0   errors: 0
+```
+
+Warnings and errors are always reported and counted (use `--quiet` to keep only
+those on the console, `--verbose` for the full trace), and any error makes the run
+exit non-zero, so a broken run fails loudly rather than producing half a dataset.
+
+The same run also writes a machine-readable receipt at `out/graphene.out`: the
+resolved invocation, the per-step timings and peak memory above, and an `outputs`
+ledger naming every operator written together with the input files (`_hr.dat`,
+`.uc`, `.xyz`, …) that produced it — so each artifact carries its own provenance.
 
 ## A real Wannier90 model: silicon, with the Wigner-Seitz minimum image
 

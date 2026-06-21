@@ -1,5 +1,6 @@
 #include "bundle_writer.hpp"
 #include "json_writer.hpp"
+#include "provenance_writer.hpp"
 
 #include <fstream>
 #include <sstream>
@@ -283,6 +284,12 @@ std::string write_bundle(const BundleSpec& spec, const SystemProvenance& prov,
         emit_symmetry(w, prov);
         emit_dft(w, prov.dft);
         emit_wannier(w, prov.wann);
+
+        // User-declared provenance from the input file's `provenance.manual` block.
+        // Null unless the input supplied it (typical for a bare _hr.dat model).
+        w.key("manual_provenance");
+        if (prov.manual.present) emit_manual_provenance(w, prov.manual);
+        else                     w.null();
 
         w.key("normalization");
         w.begin_object();

@@ -19,6 +19,10 @@ set(PUBLIC_HEADERS
     ${PROJECT_SOURCE_DIR}/include/run_config.hpp
     ${PROJECT_SOURCE_DIR}/include/win_parser.hpp
     ${PROJECT_SOURCE_DIR}/include/qe_xml_parser.hpp
+    ${PROJECT_SOURCE_DIR}/include/logger.hpp
+    ${PROJECT_SOURCE_DIR}/include/run_stats.hpp
+    ${PROJECT_SOURCE_DIR}/include/provenance_writer.hpp
+    ${PROJECT_SOURCE_DIR}/include/run_report.hpp
 )
 
 add_library(${LIBRARY_NAME} STATIC
