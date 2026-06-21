@@ -151,10 +151,11 @@ green triangles: `bare`; solid blue circles: `berry_connection` (default);
 dashed orange squares: `covariant`. Grey band: the trivial Fermi-level gap
 ($\sigma^{z}_{xy}\approx 0$); orange hatched band: the topological gap at
 $E-E_F\approx 1.2$ eV; grey dashed line: $+1\,e^2/h$. All three modes land on the
-same near-quantized plateau (bare $+1.01$, berry\_connection $+0.88$, covariant
-$+1.05\,e^2/h$; the wannierberri covariant reference gives $+0.94$) — the topology
+same near-quantized plateau (bare $+1.05$, berry\_connection $+0.91$, covariant
+$+1.09\,e^2/h$; the wannierberri covariant reference gives $+0.94$) — the topology
 is robust to the rung, and the $\sim$10% spread is the Berry-connection refinement.
-Exact diagonalization on a $160\times160$ k-mesh, $\eta=20$ meV; $e^2/h$ via
+Exact diagonalization on a $300\times300$ k-mesh with $\eta=6$ meV (below the
+55 meV gap, so the cumulative sum is *flat* across it — see FIG. 3); $e^2/h$ via
 `tools/hr_exactdiag.py shc --shc-units e2h`. $E_F=-1.3162$ eV.
 
 The lesson the figure makes concrete: for *this* gap the three rungs agree to
@@ -184,32 +185,40 @@ $O(\mathbf{k})$ and diagonalizes densely on a k-mesh, with no supercell:
 ```bash
 ../../tools/hr_exactdiag.py bands pdse2_proj --ef -1.3162   # FIG. 1
 ../../tools/hr_exactdiag.py dos   pdse2_proj                # DOS, integral = num_wann
-# WARNING: the bare velocity below gets sigma^z_xy WRONG (it anticorrelates with
-# the truth, r = -0.34); it is shown only to make the Berry-connection lesson concrete.
-../../tools/hr_exactdiag.py shc   pdse2_proj \
+# intrinsic sigma^z_xy in e^2/h. The covariant spin current (Jop) and v_y come from
+# `wannier2sparse --velocity-mode covariant`; --shc-units e2h applies the -pi factor.
+# Use eta << the 55 meV topological gap and a dense k-mesh so the plateau is FLAT,
+# not a broadening-smeared peak (see FIG. 3):
+../../tools/hr_exactdiag.py shc pdse2_proj \
         --jop pdse2_proj_JXSZ_hr.dat --vop pdse2_proj_vy_hr.dat \
-        --nk 240 --eta 0.02 --emin -3.0 --emax 1.0 --out pdse2_shc_bare
+        --shc-units e2h --nk 300 --eta 0.006 --ngrid 1200 \
+        --emin -3.0 --emax 1.0 --out pdse2_shc
 ```
 
-The figure below is the **covariant-velocity** result (the velocity carrying the
-Berry connection $A_a$, here from the wannierberri position matrix `AA_R`). That is
-the curve that matches the linear-scaling KPM once its velocity is refined the same
-way, and it is the physically correct $\sigma^{z}_{xy}$.
+The figure below is the **covariant-velocity** result. Resolution matters: the
+topological gap is only $\approx 55$ meV, so at a coarse broadening ($\eta=20$ meV)
+the cumulative $\sigma^{z}_{xy}$ never flattens and the plateau reads as a peak;
+with $\eta=6$ meV on a $300\times300$ mesh it is a genuine flat plateau.
 
-![Intrinsic spin Hall conductivity of PdSe2 versus energy: flat and near-zero across the trivial main gap, a near-quantized +0.94 e2/h plateau at the topological gap near +1.2 eV](img/pdse2_shc.png)
+![Zoom on the topological gap of PdSe2: the covariant spin Hall conductivity is a flat plateau at +1.09 e2/h across the 55 meV gap](img/pdse2_shc.png)
 
-FIG. 3. The `covariant` curve of FIG. 2 alone, with both gaps marked. Intrinsic
-(Fermi-sea) $\sigma^{z}_{xy}(E_F)$ of monolayer PdSe$_2$ versus $E-E_F$ in units of
-$e^2/h$ (covariant velocity; exact diagonalization, $60\times60$ k-mesh). Grey
-band: the **trivial** charge gap $[-0.85,+0.50]$ eV around $E_F$, where
-$\sigma^{z}_{xy}\approx 0$ (no plateau, $Z_2=0$). Orange hatched band: the narrow
-**topological** gap at $E-E_F\approx +1.2$ eV (bands 7|8, width $\approx 55$ meV),
-where $\sigma^{z}_{xy}$ sits on a flat **near-quantized plateau** (grey dashed line:
-$+1\,e^2/h$; the independent wannierberri covariant reference gives $+0.94$). It
-falls just short of the integer because spin-orbit coupling breaks $[S_z,H]=0$, so
-$S_z$ is not exactly conserved and the spin-Chern quantization is only approximate;
-the plateau's flatness and near-integer height are the operational fingerprint of
-the gap's non-trivial topology. $E_F=-1.3162$ eV.
+FIG. 3. Zoom on the topological gap, where the plateau is resolved. Intrinsic
+(Fermi-sea) $\sigma^{z}_{xy}(E_F)$ of monolayer PdSe$_2$ (covariant velocity) in
+units of $e^2/h$ versus $E-E_F$ around the conduction-manifold gap. Orange hatched
+band: the **topological** gap at $E-E_F\in[1.175,1.230]$ eV (bands 7|8, width
+$\approx 55$ meV); blue bar: the **flat plateau** across it; grey dashed line:
+$+1\,e^2/h$. As the Fermi level sweeps the gap no states are added, so the
+cumulative $\sigma^{z}_{xy}$ is constant — a genuine plateau at $+1.09\,e^2/h$
+(standard deviation $0.007$ over the 17 grid points inside the gap). Resolving it
+requires a broadening below the gap width: exact diagonalization on a
+$300\times300$ k-mesh with $\eta=6$ meV $\ll 55$ meV (at the earlier $\eta=20$ meV
+the band edges bled into the gap and the plateau looked like a peak). It sits just
+above the integer because spin-orbit coupling breaks $[S_z,H]=0$, so $S_z$ is not
+exactly conserved and the spin-Chern quantization is only approximate (the
+independent wannierberri covariant reference gives $+0.94$); the flatness and
+near-integer height are the operational fingerprint of the gap's topology. The
+*trivial* Fermi-level gap (FIG. 2, grey band) instead stays at $\approx 0$.
+$E_F=-1.3162$ eV.
 
 This is the framework that turns any reconstructed `_hr.dat` operator set into
 bands, DOS, and Kubo quantities, and it is how the curves of FIG. 2 are produced
@@ -226,8 +235,9 @@ straddling $E_F$, is trivial ($Z_2=0$): $\sigma^{z}_{xy}$ stays flat at
 $\approx 0$ through it, no plateau. But PdSe$_2$ is **not** globally trivial.
 Higher up, a narrow gap in the conduction manifold near $E-E_F\approx 1.2$ eV
 (bands 7|8) is topological, and there $\sigma^{z}_{xy}$ locks onto a flat
-**near-quantized plateau at $+0.94\,e^2/h$** — almost the same integer step
-Haldane shows for the charge Hall. It falls just short of an exact $+1$ because
+**near-quantized plateau at $\approx +1\,e^2/h$** (FIG. 3; $+1.09$ from the
+covariant velocity, $+0.94$ from the wannierberri cross-check) — almost the same
+integer step Haldane shows for the charge Hall. It sits just off an exact $+1$ because
 spin-orbit coupling breaks $[S_z,H]=0$, so $S_z$ is not perfectly conserved and the
 spin-Chern quantization is only approximate; but the plateau's flatness and
 near-integer height are the operational fingerprint of the gap's non-trivial
