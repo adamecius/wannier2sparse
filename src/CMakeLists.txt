@@ -27,6 +27,7 @@ add_library(${LIBRARY_NAME} STATIC
     gauge.cpp
     bundle_writer.cpp
     run_config.cpp
+    input_file.cpp
     win_parser.cpp
     qe_xml_parser.cpp
     ${PROJECT_SOURCE_DIR}/include/third_party/pugixml/pugixml.cpp

@@ -61,6 +61,13 @@ public:
     std::string              qe_xml_path;     ///< QE data-file-schema.xml for DFT provenance
     std::string              win_path;        ///< .win for Wannier provenance
     std::string              program_name;    ///< argv[0]
+    // Input-file CLI (--create / --write / --run): see include/input_file.hpp.
+    bool                     do_create;       ///< --create: write a template input file
+    bool                     do_write;        ///< --write: set one option in the input file
+    std::vector<std::string> write_tokens;    ///< tokens after --write (option [value...])
+    std::string              run_path;        ///< --run <input-file>
+    std::string              inp_path;        ///< -inp/--inp <input-file> (create/write target)
+    bool                     covariant_velocity; ///< covariant-velocity option (recorded; run errors)
 
     /**
      * @brief Default constructor.
@@ -69,7 +76,8 @@ public:
         : cellDim({{1, 1, 1}}), output_dir("."), emit_descriptor(false),
           exact_spin(false), orbital_l(false), mode("sparse"),
           has_truncation(false), truncation_threshold(0.0),
-          program_name("wannier2sparse") {}
+          program_name("wannier2sparse"),
+          do_create(false), do_write(false), covariant_velocity(false) {}
 
     /**
      * @brief Resolved input file stem: <project_dir>/<seed>.
@@ -203,6 +211,28 @@ public:
                 if (i + 1 >= argc) { error("missing path after '--config'"); return EXIT_ERROR; }
                 config_path = argv[++i];
             }
+            else if (a == "--create")   // optional filename follows (else use -inp / default)
+            {
+                do_create = true;
+                if (i + 1 < argc && argv[i + 1][0] != '-') inp_path = argv[++i];
+            }
+            else if (a == "--run")
+            {
+                if (i + 1 >= argc) { error("missing input file after '--run'"); return EXIT_ERROR; }
+                run_path = argv[++i];
+            }
+            else if (a == "-inp" || a == "--inp")
+            {
+                if (i + 1 >= argc) { error("missing file after '-inp'"); return EXIT_ERROR; }
+                inp_path = argv[++i];
+            }
+            else if (a == "--write")    // collect the option + its value tokens (until next flag)
+            {
+                do_write = true;
+                while (i + 1 < argc &&
+                       !(argv[i + 1][0] == '-' && !std::isdigit(static_cast<unsigned char>(argv[i + 1][1]))))
+                    write_tokens.push_back(argv[++i]);
+            }
             else if (a == "--bounds")              { emit_descriptor = true; }
             else if (a == "--exact-spin")          { exact_spin = true; }
             else if (a == "--orbital-l" || a == "--orbital-L") { orbital_l = true; }
@@ -222,6 +252,11 @@ public:
                                                    { error("unknown option '" + a + "'"); return EXIT_ERROR; }
             else                                   { positional.push_back(a); }
         }
+
+        // Input-file CLI: --create/--write are pure file edits (no run), and --run
+        // takes all its options from the input file (applied in main). None of them
+        // require positional LABEL / supercell dims, so short-circuit here.
+        if (do_create || do_write || !run_path.empty()) return PROCEED;
 
         // With --config the run.json supplies the label/operators/provenance, so
         // positional LABEL and the supercell dimensions are not required here.
@@ -354,6 +389,19 @@ private:
 "      --config PATH      Drive a bundle run from a run.json config file instead\n"
 "                         of positional arguments (label, operators, output dir\n"
 "                         and DFT/Wannier provenance sources are read from it).\n"
+"\n"
+"INPUT-FILE WORKFLOW (the old options recorded in an editable `key = value` file)\n"
+"      --create [FILE]    Write a commented template input file (default w2sp.inp,\n"
+"                         or the name given, or the -inp FILE).\n"
+"      --write OPT [VAL]  Set/append one option in the input file (-inp FILE).\n"
+"                         OPT may be a flag (covariant-velocity, exact-spin,\n"
+"                         orbital-L, bounds), an operator name (VX, SZ, ...),\n"
+"                         'spin-current X Z', 'op-file NAME PATH', or key=value\n"
+"                         (e.g. supercell 50 50 1, label=foo, mode=bundle).\n"
+"      -inp FILE          Input file targeted by --create / --write.\n"
+"      --run FILE         Run the input file; writes <output_dir>/<label>.w2sp.out\n"
+"                         (a summary of the resolved options and produced files).\n"
+"                         Produces output byte-identical to the positional CLI.\n"
 "  -h, --help             Show this help and exit.\n"
 "      --list-operators   List valid operator names and exit.\n"
 "      --version          Show version and exit.\n"

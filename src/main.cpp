@@ -20,6 +20,7 @@
 #include "checks.hpp"
 #include "bundle_writer.hpp"
 #include "run_config.hpp"
+#include "input_file.hpp"
 #include "win_parser.hpp"
 #include "qe_xml_parser.hpp"
 #include <set>
@@ -408,6 +409,53 @@ int main(int argc, char* argv[])
         case W2SP_arguments::PROCEED:    break;
     }
 
+    // ---- input-file CLI: --create (template) / --write (set option) / --run -----
+    const std::string default_inp = "w2sp.inp";
+    if (args.do_create)
+    {
+        const std::string p = args.inp_path.empty() ? default_inp : args.inp_path;
+        try { w2sp::input_file_create(p); }
+        catch (const std::exception& e) { cerr << args.program_name << ": error: " << e.what() << "\n"; return 1; }
+        cout << "Wrote template input file -> " << p << "\n  edit it, or: " << args.program_name
+             << " --write KEY [VALUE...] -inp " << p << "\n  then run:    " << args.program_name << " --run " << p << "\n";
+        return 0;
+    }
+    if (args.do_write)
+    {
+        const std::string p = args.inp_path.empty() ? default_inp : args.inp_path;
+        if (args.write_tokens.empty()) { cerr << args.program_name << ": error: --write needs an option, e.g. --write covariant-velocity -inp " << p << "\n"; return 1; }
+        const std::string t0 = args.write_tokens[0];
+        std::string rest;
+        for (std::size_t i = 1; i < args.write_tokens.size(); ++i) rest += (i > 1 ? " " : "") + args.write_tokens[i];
+        std::string norm = t0; for (char& c : norm) if (c == '-') c = '_';   // flag names use '-' on CLI
+        std::string key, value; bool append = false;
+        if (norm == "covariant_velocity" || norm == "exact_spin" || norm == "bounds" ||
+            norm == "orbital_L" || norm == "orbital_l")
+            { key = norm; value = rest.empty() ? "true" : rest; }
+        else if (W2SP_arguments::is_valid_operator(t0))      { key = "operators"; value = t0; append = true; }
+        else if (norm == "spin_current")                     { key = "spin_current"; value = rest; }
+        else if (norm == "op_file")                          { key = "op_file"; value = rest; }
+        else if (t0.find('=') != std::string::npos)          { key = t0.substr(0, t0.find('=')); value = t0.substr(t0.find('=') + 1); if (!rest.empty()) value += " " + rest; }
+        else                                                 { key = norm; value = rest; }
+        try { w2sp::input_file_set(p, key, value, append); }
+        catch (const std::exception& e) { cerr << args.program_name << ": error: " << e.what() << "\n"; return 1; }
+        cout << "Set '" << key << " = " << value << "' in " << p << "\n";
+        return 0;
+    }
+    if (!args.run_path.empty())
+    {
+        try { w2sp::input_file_apply(args.run_path, args); }
+        catch (const std::exception& e) { cerr << args.program_name << ": error: " << e.what() << "\n"; return 1; }
+        if (args.label.empty()) { cerr << args.program_name << ": error: input file must set a non-empty 'label'\n"; return 1; }
+    }
+    if (args.covariant_velocity)
+    {
+        cerr << args.program_name << ": error: covariant_velocity (Berry-connection velocity) is not "
+                "implemented yet. Build it externally (v = i(R.lat)H - i[H,A], A from _r.dat) and ingest "
+                "via op_file, or see docs/operators.md.\n";
+        return 1;
+    }
+
     // Config-driven bundle runs: a run.json supplies label/operators/output/
     // provenance instead of the positional CLI. It overrides only the keys it
     // sets, then drives the same run_bundle_mode path below.
@@ -430,7 +478,12 @@ int main(int argc, char* argv[])
     }
 
     if (args.mode == "bundle")
-        return run_bundle_mode(args);
+    {
+        const int rc = run_bundle_mode(args);
+        if (rc == 0 && !args.run_path.empty())
+            w2sp::input_file_write_output(args.output_dir + "/" + args.label + ".w2sp.out", args);
+        return rc;
+    }
 
     const string in_prefix = args.input_prefix();   // <project_dir>/<seed>, defaults to LABEL
     const string f_uc  = in_prefix + ".uc";
@@ -655,5 +708,8 @@ int main(int argc, char* argv[])
         cerr << args.program_name << ": error: " << e.what() << "\n";
         return 1;
     }
+
+    if (!args.run_path.empty())   // --run: write the lsquant-style output summary
+        w2sp::input_file_write_output(args.output_dir + "/" + args.label + ".w2sp.out", args);
     return 0;
 }
