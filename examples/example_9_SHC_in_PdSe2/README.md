@@ -128,6 +128,41 @@ This is the framework that turns any reconstructed `_hr.dat` operator set into
 bands, DOS, and Kubo quantities, and it is how the "exact" curve in the spin-Hall
 comparison is produced. The takeaway repeats: feed it the *bare* velocity and the
 intrinsic $\sigma^{z}_{xy}$ comes out anticorrelated with the truth; feed it the
-**covariant** velocity (Berry connection) and it matches. PdSe$_2$ itself is a
-trivial insulator ($Z_2=0$), so the $\sim 1\,e^2/h$ peak near $1.2$ eV is a large
-*non-topological* spin-Berry-curvature feature, not a quantized plateau.
+**covariant** velocity (Berry connection) and it matches.
+
+## Reading the spin Hall: a trivial gap and a topological one
+
+The energy dependence of $\sigma^{z}_{xy}$ carries the topology, and PdSe$_2$ shows
+two distinct gaps with opposite character. Sweep the Fermi level and plot it:
+
+```bash
+python3 ../../tools/hr_exactdiag.py shc pdse2_proj \
+        --jop pdse2_proj_JXSZ_hr.dat --vop pdse2_proj_vy_hr.dat \
+        --nk 240 --eta 0.02 --emin -3.0 --emax 1.0 --out pdse2_shc
+python3 ../plot_hall.py pdse2_shc.json --out img/pdse2_shc.png --ef -1.3162 \
+        --ylabel '$\sigma^{z}_{xy}$ (natural units)' --gap -0.845 0.495 --gap2 1.175 1.230
+```
+
+![Intrinsic spin Hall conductivity of PdSe2 versus Fermi energy: flat and near-zero across the trivial main gap, a large peak at the topological gap near 1.2 eV](img/pdse2_shc.png)
+
+FIG. 2. Intrinsic (Fermi-sea) spin Hall conductivity $\sigma^{z}_{xy}(E_F)$ of
+monolayer PdSe$_2$ versus $E-E_F$ (natural units; the absolute scale carries one
+$\sigma_{xx}$-style calibration constant, so the peak corresponds to
+$\sim 1\,e^2/h$). Solid blue with open circles: spin-Berry-curvature sum from
+`tools/hr_exactdiag.py shc` with the covariant velocity. Grey band: the **trivial**
+main gap ($-0.85$ to $+0.50$ eV, $Z_2=0$); orange hatched band: the small
+**topological** gap at $E-E_F\approx 1.2$ eV (bands 7|8, width $\approx 55$ meV).
+Across the trivial gap $\sigma^{z}_{xy}$ is flat and essentially zero — there is no
+quantized plateau; the large feature instead sits at the higher topological gap,
+where the spin-Berry curvature concentrates. Parameters: $240\times240$
+$\mathbf{k}$-mesh, $20$ meV Gaussian broadening, $E_F=-1.3162$ eV.
+
+The contrast with Tutorial 4 is the lesson. In the Haldane model a *charge* Hall
+conductivity locks onto an exact integer $e^2/h$ across the gap — a quantized
+plateau pinned by the Chern number. Here the *main* gap around $E_F$ is trivial,
+so $\sigma^{z}_{xy}$ stays flat at zero through it: no plateau, no quantization.
+The large spin-Hall signal lives instead at the narrow **topological** gap in the
+conduction manifold near $1.2$ eV, where a non-trivial spin-Chern character makes
+the spin-Berry curvature pile up. PdSe$_2$ is thus not globally trivial: its
+band-edge gap is ordinary, but a higher gap carries the topology that the spin
+Hall response makes visible.
