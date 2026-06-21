@@ -1,0 +1,50 @@
+&CONTROL
+  calculation = 'scf',
+  prefix      = 'PdSe2_wann',
+  outdir      = "../tmp/",
+  pseudo_dir  = "../pseudo/",
+  verbosity   = 'high',
+  tprnfor = .true.,
+  tstress = .true.,
+/
+
+&SYSTEM
+   ntyp             = 2,
+   nat              = 6,
+   ibrav            = 0,
+   ecutwfc = 80,
+   ecutrho = 800,
+   occupations = 'smearing',
+   smearing = 'mv',
+   degauss = 0.02,
+   noncolin = .true.,
+   lspinorb = .true.,
+
+
+/
+&ELECTRONS
+   conv_thr = 1.0d-8,
+   mixing_beta = 0.3,
+   electron_maxstep = 200,
+/
+
+ATOMIC_SPECIES
+Pd 106.42 Pd.UPF
+Se 78.971 Se.UPF
+
+
+CELL_PARAMETERS angstrom
+5.75046066952370 0.00000000000000 0.00000000000000
+0.00000000000000 5.91993495884138 0.00000000000000
+0.00000000000000 0.00000000000000 16.45073988400000
+
+ATOMIC_POSITIONS (angstrom)
+Pd            2.8752303408        5.9199349579        8.2253699393
+Pd            5.7504606650        2.9599674717        8.2253699353
+Se            0.6344413780        0.7081700244        7.4778694542
+Se            3.5096717163        2.2517974499        8.9728704268
+Se            5.1160192869        5.2117649233        8.9728704227
+Se            2.2407889533        3.6681374983        7.4778694555 
+
+K_POINTS automatic
+4 4 1  0 0 0
