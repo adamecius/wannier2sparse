@@ -124,6 +124,18 @@ $O(\mathbf{k})$ and diagonalizes densely on a k-mesh, with no supercell:
         --jop pdse2_proj_JXSZ_hr.dat --vop pdse2_proj_vy_hr.dat   # intrinsic sigma^z_xy
 ```
 
+![Intrinsic spin Hall conductivity of PdSe2 versus energy: zero across the gap, a large peak near +1.2 eV](img/pdse2_shc.png)
+
+FIG. 2. Intrinsic (Fermi-sea) spin Hall conductivity $\sigma^{z}_{xy}$ of monolayer
+PdSe$_2$ versus $E-E_F$, from `tools/hr_exactdiag.py shc` on the same `_hr.dat`
+operators ($J^{z}_{x}=\tfrac12\{v_x,S_z\}$ and $v_y$; $220\times220$ k-mesh,
+$\eta=20$ meV Gaussian; arbitrary units). Solid blue: $\sigma^{z}_{xy}$; grey band:
+the charge gap $[-0.81,+0.47]$ eV around $E_F$ where $\sigma^{z}_{xy}\approx 0$
+(no spin-Hall plateau, consistent with the trivial $Z_2=0$ classification). The
+large feature near $E-E_F\approx +1.2$ eV is a non-topological spin-Berry-curvature
+peak at a conduction-band near-degeneracy. This is the curve the linear-scaling
+KPM (lsquant Kubo-Bastin, Fermi-sea part) reproduces.
+
 This is the framework that turns any reconstructed `_hr.dat` operator set into
 bands, DOS, and Kubo quantities, and it is how the "exact" curve in the spin-Hall
 comparison is produced. The takeaway repeats: feed it the *bare* velocity and the
