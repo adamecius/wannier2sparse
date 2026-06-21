@@ -1,0 +1,9 @@
+&INPUTPP
+  prefix    = 'PdSe2_wann'
+  outdir    = '../tmp/'
+  seedname  = 'pdse2_proj'
+  write_mmn = .true.
+  write_amn = .true.
+  write_eig = .true.
+  write_spn = .true.
+/

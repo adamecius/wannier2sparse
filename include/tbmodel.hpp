@@ -19,6 +19,7 @@
 #include <iostream>
 #include <limits>
 #include <cassert>
+#include <stdexcept>
 #include <functional>
 #include <cmath>
 #include<iostream>
@@ -261,8 +262,14 @@ class tbmodel
                 auto key = make_tuple( q(p[0]), q(p[1]), q(p[2]), orbital_base_label(get<0>(orb)) );
                 if( grp.find(key) == grp.end() ) grp[key] = std::make_pair(-1,-1);
                 int& slot = ( sz > 0 ) ? grp[key].first : grp[key].second;
-                assert( slot == -1 &&
-                    "spin pairing ambiguous: >1 orbital with the same (position, base-label, spin); use distinct orbital labels" );
+                // Throw (not assert): assert is a no-op under NDEBUG -> silent-wrong spin
+                // operators; a clear exception lets the caller fall back to the .spn route.
+                if( slot != -1 )
+                    throw std::runtime_error(
+                        "map_id2partner: spin pairing ambiguous (>1 orbital with the same "
+                        "position+base-label+spin). Use distinct orbital labels, or supply the "
+                        "spin operators directly: --op-file SZ <seed>_Sz_hr.dat (from .spn / "
+                        "export_operators.py), or --exact-spin.");
                 slot = id;
             }
             id++;
@@ -271,8 +278,13 @@ class tbmodel
         for( auto& kv : grp )
         {
             int up = kv.second.first, dn = kv.second.second;
-            assert( up != -1 && dn != -1 &&
-                "spin pairing incomplete: a (position, base-label) group lacks an up or down partner" );
+            if( up == -1 || dn == -1 )
+                throw std::runtime_error(
+                    "map_id2partner: spin pairing incomplete (a position+base-label group lacks "
+                    "an up or down partner) -- the label-based spin generator cannot pair this "
+                    "model. Provide spin operators via --op-file S{X,Y,Z} <seed>_S{x,y,z}_hr.dat "
+                    "(from .spn), or build exact spin with --exact-spin (.spn + _u.mat). A "
+                    "tight-binding user can pass any precomputed *_hr.dat the same way.");
             partner[up] = dn;
             partner[dn] = up;
         }
@@ -339,6 +351,23 @@ class tbmodel
      * matrix in the same spin-resolved orbital ordering. Returns zero for a spinless
      * model.
      */
+    /**
+     * @brief Spin-current operator J^{sdir}_{dir} from the velocity and a Pauli spin factor.
+     *
+     * Multiplies each velocity element v_{ij}(R) by the per-element spin matrix factor.
+     * This element-wise form equals the anticommutator J = 1/2{v, sigma} ONLY for the
+     * DIAGONAL spin matrix sigma_z: (1/2{v,sigma_z})_{ij} = 1/2 v_{ij}(s_i+s_j), which is
+     * v_{ij} s_i for same-spin (s_i=s_j) and ZERO for opposite-spin. The previous code
+     * kept the opposite-spin block unchanged instead of zeroing it (a bug for SOC models
+     * where v has spin-flip elements); fixed below.
+     *
+     * Warning: for the OFF-diagonal sigma_x/sigma_y the anticommutator mixes orbital
+     * pairs and CANNOT be written as v_{ij} times a per-element factor. The element-wise
+     * x/y values below are therefore NOT the true spin current; the authoritative route
+     * for x/y is the supercell matrix anticommutator (CSR `--spin-current V S`, which
+     * forms 1/2(V*S + S*V)). To-do: build the primitive J for all components as an
+     * R-space anticommutator convolution of v(R) and S(R).
+     */
     hopping_list createHoppingSpinCurrents_list(const int dir, const char sdir)
     {
         std::cout<<"Creating the spin Current matrix J"<<dir<<"S"<<sdir<<std::endl;
@@ -352,20 +381,20 @@ class tbmodel
             if( s1!= 0 && s2!= 0 )
             switch(sdir)
             {
-                case 'x':
-                if( s1 + s2 == 0  )
-                    *value *=1.0;
+                case 'x':                                   // off-diagonal: see Warning above
+                *value *= ( s1 + s2 == 0 ) ? hopping_list::value_t(1.0,0.0)
+                                           : hopping_list::value_t(0.0,0.0);
                 break;
 
-                case 'y':
-                if( s1 + s2 == 0  )
-                    *value *= hopping_list::value_t(0.0,s2);
+                case 'y':                                   // off-diagonal: see Warning above
+                *value *= ( s1 + s2 == 0 ) ? hopping_list::value_t(0.0,(double)s2)
+                                           : hopping_list::value_t(0.0,0.0);
                 break;
 
-                case 'z':
-                if( s1 == s2 )
-                    *value *= s2;
-                    break;
+                case 'z':                                   // diagonal: exact anticommutator
+                *value *= ( s1 == s2 ) ? hopping_list::value_t((double)s2,0.0)
+                                       : hopping_list::value_t(0.0,0.0);  // zero opposite-spin (fix)
+                break;
 
                 default:
                     *value *= 0 ;

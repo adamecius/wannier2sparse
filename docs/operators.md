@@ -158,6 +158,18 @@ These operators are derived from `H_ij(R)` directly and need only `.uc`, `.xyz`,
   Cartesian displacement between its initial and final Wannier centers
   (`r_j + R − r_i`), so it needs the centers (`.xyz`) and lattice (`.uc`). Units
   eV·Å. [createHoppingCurrents_list](../include/tbmodel.hpp).
+  - **Warning — interband quantities need the Berry connection.** This geometric
+    velocity is the gradient `∂H/∂k` (plus the diagonal Wannier centers). It gives
+    the correct band group velocity and is sufficient for the DOS and the
+    longitudinal `σ_xx`. It is **not** sufficient for interband responses
+    (anomalous/spin Hall): the off-diagonal velocity matrix elements `⟨n|v|m⟩`
+    require the inter-Wannier Berry connection `A_d(R)=⟨0i|r_d|Rj⟩`. The full
+    **covariant velocity** is `v_d(R) = i(R·lat)_d H(R) − i[H, A_d](R)`, with
+    `A_d(R)` from Wannier90's `<seed>_r.dat` (`write_rmn=.true.`). To-do: a
+    `--covariant-velocity` route that reads `_r.dat` and adds the `−i[H,A_d]`
+    commutator; until then, build it externally and ingest via `--op-file`, and
+    verify the sign/normalization against Wannier90 `postw90/get_oper.F90`
+    (`get_AA_R`)/`berry.F90`.
 - **Density** — keep onsite (`R=0`) terms, zero translations.
   [createHoppingDensity_list](../include/tbmodel.hpp).
 - **Label-spin `S_α`** — built from the *spin doubling*, not from `H`'s onsite
@@ -167,10 +179,21 @@ These operators are derived from `H_ij(R)` directly and need only `.uc`, `.xyz`,
   spinless model. [createHoppingSpinDensity_list](../include/tbmodel.hpp).
   *This is a heuristic*: it requires the orbital labels to mark spin and assumes a
   collinear spin frame. For SOC/noncollinear models use `--exact-spin` (§2.3).
-- **Spin current `J_d S_α`** — the velocity operator projected through the spin
-  channel; in CSR mode the production form is the anticommutator `½{V_d, S_α}`
-  assembled after supercell expansion. Units eV·Å·ħ/2.
-  [createHoppingSpinCurrents_list](../include/tbmodel.hpp) + `--spin-current`.
+  If the up/down pairing is ambiguous or incomplete (common for real spinor
+  Wannier models), `map_id2partner` now **throws a clear error** (it no longer
+  asserts/aborts) pointing to the `--exact-spin` (`.spn`) route or to ingesting a
+  precomputed spin operator via `--op-file S{X,Y,Z} <seed>_S?_hr.dat`. A
+  **tight-binding** user with `*_spin_hr.dat` (or per-component `*_S?_hr.dat`)
+  passes them the same way and skips the label heuristic entirely.
+- **Spin current `J_d S_α = ½{V_d, S_α}`** — in CSR mode the production form is the
+  **matrix anticommutator** `½(V_d S_α + S_α V_d)` assembled after supercell
+  expansion (`--spin-current`), which is correct for any `α`. The primitive,
+  element-wise `createHoppingSpinCurrents_list` is exact only for the **diagonal**
+  `S_z` (`J^z` = `v·s_i` on the same-spin block, **zero on the opposite-spin
+  block** — the latter was previously left un-zeroed, a bug for SOC, now fixed);
+  for off-diagonal `S_{x,y}` it cannot be written element-wise, so use
+  `--spin-current`. Units eV·Å·ħ/2.
+  [createHoppingSpinCurrents_list](../include/tbmodel.hpp).
 
 ---
 
