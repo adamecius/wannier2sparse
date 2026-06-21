@@ -1,4 +1,4 @@
-# Tutorial 9: a spin current with no charge current, in a real SOC material
+# Tutorial 5: a spin current with no charge current, in a real SOC material
 
 Send an electric field through monolayer PdSe$_2$ and no charge Hall current
 flows, the crystal has inversion symmetry. Yet a transverse flow of *spin* is
@@ -80,17 +80,30 @@ exact spin needs `.spn` + `_u.mat`; the covariant velocity needs `_r.dat`.
 ## Building the operators and the spin current
 
 `wannier2sparse` expands the primitive model into a finite supercell CSR and, in
-the same call, builds the velocity, the exact spin, and the spin current:
+the same call, builds the velocity, the exact spin, and the spin current. Put
 
-```bash
-wannier2sparse pdse2_proj 50 50 1 VX VY --exact-spin --spin-current X Z \
-               --velocity-mode covariant --r-dat pdse2_proj_r.dat -o out
-# -> out/pdse2_proj.{HAM,VX,VY,SZexact,JXSZ}.CSR
+```json
+{
+  "label": "pdse2_proj", "mode": "sparse", "output_dir": "out",
+  "supercell": [50, 50, 1],
+  "operators": ["VX", "VY", "VXSZ"],
+  "exact_spin": true,
+  "velocity_mode": "covariant",
+  "r_dat": "pdse2_proj_r.dat"
+}
 ```
 
-The `--velocity-mode` flag chooses the velocity ladder (`bare` |
-`berry_connection`, default | `covariant`) and applies it to `VX/VY/VZ` **and** to
-the velocity inside the spin current. For the spin Hall, use `covariant`: it reads
+in `shc.w2s` and run it:
+
+```bash
+wannier2sparse -x shc.w2s
+# -> out/pdse2_proj.{HAM,VX,VY,SXexact,SYexact,SZexact,VXSZ}.CSR
+```
+
+Here `VXSZ` is the spin current $J^{z}_{x}=\tfrac12\{v_x,S_z\}$. The `velocity_mode`
+key chooses the velocity ladder (`bare` | `berry_connection`, default |
+`covariant`) and applies it to `VX/VY/VZ` **and** to the velocity inside the spin
+current. For the spin Hall, use `covariant`: it reads
 the Berry connection $A_a(\mathbf{R})=\langle 0i|r_a|\mathbf{R}j\rangle$ from
 Wannier90's `_r.dat` (`write_rmn=.true.`) and forms
 $v_a=-i(\mathbf{R}\!\cdot\!\mathrm{lat})_a H - i[H,A_a]$ (the Wang-Yates-Souza-
@@ -101,34 +114,32 @@ Wannier90 run as `_hr.dat` (same gauge).
 
 The spin current is the lesson of §"physics" made operational. For the diagonal
 $\sigma_z$ the anticommutator is local, but for off-diagonal $\sigma_{x,y}$ it
-mixes orbitals, so `--spin-current` forms the true matrix anticommutator
+mixes orbitals, so the `VXSZ` operator forms the true matrix anticommutator
 $\tfrac12(V S + S V)$ after expansion rather than an element-wise product. A
-**tight-binding** user who already has the operators as `_hr.dat` (including a
-`*_spin_hr.dat`) skips DFT entirely and ingests them:
-
-```bash
-wannier2sparse mymodel 50 50 1 --op-file SZ mymodel_Sz_hr.dat \
-                               --op-file JXSZ mymodel_JXSZ_hr.dat -o out
-```
+**tight-binding** user who already has the operators as `_hr.dat` files skips DFT
+entirely: drop them in an `operators/` folder (`SZ_hr.dat`, `VXSZ_hr.dat`, …) and
+list their names in `operators`, and they are read and expanded by the same engine.
 
 ## The velocity ladder, run three ways
 
 The single most important choice for a spin-Hall calculation is *which velocity*.
-`wannier2sparse` builds three, in increasing fidelity, and the same flag governs
-`VX/VY/VZ` and the velocity inside `J=½{V,S}`. The recommended way to drive it is a
-`.w2s` input file, which records the whole choice in one validated, durable place:
+`wannier2sparse` builds three, in increasing fidelity, and the `velocity_mode` key
+governs `VX/VY/VZ` and the velocity inside `J=½{V,S}`. It lives in the same
+`shc.w2s` as everything else:
 
-```bash
-wannier2sparse --create "pdse2_proj 50 50 1 VY --spin-current X Z --exact-spin \
-                         --velocity-mode covariant --r-dat pdse2_proj_r.dat" -inp shc
-wannier2sparse shc.w2s            # -> pdse2_proj.{HAM,VY,SXexact,SYexact,SZexact,JXSZ}.CSR + pdse2_proj.out
+```json
+{
+  "label": "pdse2_proj", "mode": "sparse", "output_dir": "out",
+  "supercell": [50, 50, 1],
+  "operators": ["VXSZ"],
+  "exact_spin": true,
+  "velocity_mode": "covariant",   // <- the ladder rung; bare | berry_connection | covariant
+  "r_dat": "pdse2_proj_r.dat"     // needed only for covariant
+}
 ```
 
-This writes `shc.w2s`, whose keys are `"velocity_mode": "covariant"`,
-`"r_dat": "pdse2_proj_r.dat"`, `"exact_spin": true`, `"spin_currents": [["X","Z"]]`
-and `"operators": ["VY"]`. Switch `velocity_mode` between the three rungs (edit
-`shc.w2s`, or pass `--velocity-mode` on the positional CLI) and recompute the
-intrinsic $\sigma^{z}_{xy}$ for each:
+Switch `velocity_mode` between the three rungs and recompute the intrinsic
+$\sigma^{z}_{xy}$ for each:
 
 - **`bare`** — $v_a=-i(\mathbf{R}\!\cdot\!\mathrm{lat})_a H$. The pure Bloch-phase
   gradient. Needs nothing but `_hr.dat`.
@@ -183,7 +194,7 @@ $O(\mathbf{k})$ and diagonalizes densely on a k-mesh, with no supercell:
 ../../tools/hr_exactdiag.py bands pdse2_proj --ef -1.3162   # FIG. 1
 ../../tools/hr_exactdiag.py dos   pdse2_proj                # DOS, integral = num_wann
 # intrinsic sigma^z_xy in e^2/h. The covariant spin current (Jop) and v_y come from
-# `wannier2sparse --velocity-mode covariant`; --shc-units e2h applies the -pi factor.
+# a `velocity_mode: covariant` run; --shc-units e2h applies the -pi factor.
 # Use eta << the 55 meV topological gap and a dense k-mesh so the plateau is FLAT,
 # not a broadening-smeared peak (see FIG. 3):
 ../../tools/hr_exactdiag.py shc pdse2_proj \
@@ -248,9 +259,21 @@ prefactor $2\pi/A_\mathrm{cell}$ times $\tfrac12$ for the $\hbar/2$ spin, with t
 $\sigma^z_{xy}$ sign), exactly analogous to $\sigma_{xx}$'s $7.49$. Without it the
 same curve reads $-0.33$ in natural units, which is why an earlier draft mistook
 the trivial-vs-topological story — the plateau was always there, only unscaled.
-Second, the **velocity**: `wannier2sparse --velocity-mode {bare,berry_connection,
-covariant}` selects the rung. All three give a near-quantized $\approx +1\,e^2/h$
+Second, the **velocity**: the `velocity_mode` key (`bare` | `berry_connection` |
+`covariant`) selects the rung. All three give a near-quantized $\approx +1\,e^2/h$
 plateau here (the topology is robust); the `covariant` rung (Berry connection from
 `_r.dat`) is the most accurate and is the principled choice for any interband
 response. The figure was made with the covariant velocity; the wannierberri
 position matrix served as the independent cross-check ($+0.94\,e^2/h$).
+
+## References and links
+
+- Covariant velocity / Wannier interpolation of $k$-derivatives: X. Wang, J. R.
+  Yates, I. Souza, D. Vanderbilt, Phys. Rev. B 74, 195118 (2006),
+  [arXiv:cond-mat/0608257](https://arxiv.org/abs/cond-mat/0608257).
+- Spin Hall effect (review): J. Sinova, S. O. Valenzuela, J. Wunderlich, C. H.
+  Back, T. Jungwirth, Rev. Mod. Phys. 87, 1213 (2015),
+  [arXiv:1411.3249](https://arxiv.org/abs/1411.3249).
+- <!-- TODO[ref-pdse2]: the specific PdSe2 / monolayer spin-Hall paper you have in
+  mind, with arXiv link (see documentation_todo.md section E). -->
+- Operator and gauge conventions: docs/conventions.md and docs/operators.md.

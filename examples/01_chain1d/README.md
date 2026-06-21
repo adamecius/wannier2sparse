@@ -61,25 +61,23 @@ three blocks $H(0)=0$ and $H(\pm 1)=-1$, a `.uc` with the lattice vector, and a
 the numbers are the hoppings themselves with no normalization to undo. The next
 step reads these files.
 
-## Step 2: describe the run in an input file, then run it
+## Step 2: write the input file and run it
 
-The recommended way to drive a run is a `.w2s` input file: a JSON document (which
-tolerates `//` comments) that records every option in one validated, reproducible
-place. Scaffold one from a short command, then run it.
+A run is described by a small `.w2s` file. Put
+
+```json
+{ "label": "chain1d", "mode": "sparse", "supercell": [400, 1, 1] }
+```
+
+in `chain1d.w2s` and run it:
 
 ```bash
-wannier2sparse --create "chain1d 400 1 1" -inp chain1d   # 1. write chain1d.w2s
-wannier2sparse chain1d.w2s                               # 2. run -> chain1d.HAM.CSR
+wannier2sparse -x chain1d.w2s        # -> chain1d.HAM.CSR
 ```
 
 The supercell engine replicates each primitive block $H(R)$ across $N$ cells and
 PBC-wraps it, turning the three-number model into one $N\times N$ sparse matrix
 whose eigenvalues are $2t\cos k$ sampled at the $N$ allowed momenta $k=2\pi n/N$.
-The run writes the expanded `chain1d.HAM.CSR` and a JSON run receipt `chain1d.out`
-(the resolved options, per-step timing, peak memory, and the input files that
-produced each operator). Because the input file is self-documenting and
-reproducible, prefer it; the older one-line positional form
-`wannier2sparse chain1d 400 1 1` produces byte-identical output.
 
 ## Step 3: the supercell size is the resolution dial on the spectrum
 
@@ -124,8 +122,7 @@ its own.
   how it is sampled and drawn, never what it contains.
 - The supercell size $N$ sets the energy sampling and the KPM moment count $M$
   sets the broadening; a smooth, faithful curve needs both.
-- The `.w2s` input file records a run as one self-documenting JSON file and
-  reproduces the positional CLI byte for byte.
+- A run is one small `.w2s` file, executed with `wannier2sparse -x model.w2s`.
 
 Later tutorials reuse this exact pipeline, primitive $O_{ij}(R)$ to supercell CSR
 to KPM density, on models where the band structure is no longer a single cosine.
@@ -135,8 +132,9 @@ to KPM density, on models where the band structure is no longer a single cosine.
 - wannier2sparse source and documentation: https://github.com/adamecius/wannier2sparse
 - Operator and gauge conventions: docs/conventions.md and docs/operators.md.
 - Wannier functions: N. Marzari et al., Rev. Mod. Phys. 84, 1419 (2012),
-  arXiv:1112.5411. Wannier90: G. Pizzi et al., J. Phys. Condens. Matter 32,
-  165902 (2020), arXiv:1907.09788.
+  [arXiv:1112.5411](https://arxiv.org/abs/1112.5411). Wannier90: G. Pizzi et al.,
+  J. Phys. Condens. Matter 32, 165902 (2020),
+  [arXiv:1907.09788](https://arxiv.org/abs/1907.09788).
 - Transport methodology: Z. Fan, J. H. Garcia, A. W. Cummings et al., Linear
   scaling quantum transport methodologies, Phys. Rep. 903, 1 (2021),
   arXiv:1811.07387.

@@ -27,18 +27,16 @@ $N^{1/3}$ per side in 3D). Building the tool is covered once in the top-level
 [README](../README.md); set `W2SP_BIN=/path/to/wannier2sparse` if it is not at
 `../build/wannier2sparse`.
 
-The recommended way to drive a run is a **`.w2s` input file**: a JSON document
-(which tolerates `//` comments) that records every option in one validated,
-self-documenting place. Scaffold one from a short command, then run it (the older
-positional CLI gives byte-identical output):
+Under the hood each model is run from a small `.w2s` input file (see the
+[input-file reference](../docs/input_file.md)):
 
-```bash
-wannier2sparse --create "graphene 80 80 1" -inp graphene   # 1. write graphene.w2s
-wannier2sparse graphene.w2s                                # 2. run -> graphene.HAM.CSR + graphene.out
+```json
+{ "label": "graphene", "mode": "sparse", "supercell": [80, 80, 1] }
 ```
 
-Each run also leaves a `<label>.out` JSON receipt (resolved options, per-step
-timing, peak memory, and the input files that produced each operator).
+```bash
+wannier2sparse -x graphene.w2s        # -> graphene.HAM.CSR
+```
 
 The exact, supercell-free reference for any reconstructed `_hr.dat` (bands, DOS,
 conductivity, spin Hall) is [`tools/hr_exactdiag.py`](../tools/hr_exactdiag.py).
@@ -49,11 +47,11 @@ Each model is a short, self-contained tutorial; they build on one another:
 
 | # | Tutorial | Teaches |
 |---|---|---|
-| 1 | [`01_chain1d`](01_chain1d/) | the full pipeline: primitive $O_{ij}(R)$ to supercell CSR to KPM DOS; the `.w2s` input file; supercell size as the resolution dial |
+| 1 | [`01_chain1d`](01_chain1d/) | the full pipeline: primitive $O_{ij}(R)$ to supercell CSR to KPM DOS; the input-file CLI; supercell size as the resolution dial |
 | 2 | [`02_graphene`](02_graphene/) | the exact-diagonalization cross-check (`hr_exactdiag`) as the oracle for the stochastic KPM |
-| 3 | [`03_cubic`](03_cubic/) | linear scaling and the $N^3$ resolution trade in 3D; `--mode sparse` vs `--mode bundle` |
+| 3 | [`03_cubic`](03_cubic/) | linear scaling and the $N^3$ resolution trade in 3D; `sparse` vs `bundle` output |
 | 4 | [`04_haldane`](04_haldane/) | complex hoppings and a gap; how $H(R)$ carries the ingredients of topology |
-| 9 | [`example_9_SHC_in_PdSe2`](example_9_SHC_in_PdSe2/) | a real SOC Wannier model end to end: operators, the spin current, and the intrinsic spin Hall conductivity |
+| 5 | [`05_wannier_shc_pdse2`](05_wannier_shc_pdse2/) | a real SOC Wannier model end to end: operators, the spin current, and the intrinsic spin Hall conductivity |
 
 ## The physics each model shows
 
@@ -130,7 +128,7 @@ are the band sampled at the supercell's allowed $k$-points.
 
 That last paragraph left a thread hanging: a full $E(k)$ needs the per-$R$ blocks
 before folding, and the CSR no longer has them. The bundle is exactly those blocks.
-Instead of expanding, `--mode bundle` writes the primitive operator $O_{ij}(R)$
+With `"mode": "bundle"` the tool writes the primitive operator $O_{ij}(R)$
 unexpanded, so a consumer holds the model itself and can form the Bloch
 Hamiltonian at any $\mathbf{k}$,
 
@@ -139,8 +137,8 @@ $$ H(\mathbf{k}) = \sum_{\mathbf{R}} e^{i\mathbf{k}\cdot\mathbf{R}}\, H(\mathbf{
 then pick its own supercell later. The lesson of this gallery, that $O_{ij}(R)$ is
 the whole model, becomes literal: the bundle ships that object and nothing folded.
 
-```bash
-$W2SP_BIN graphene 1 1 1 VX SZ --mode bundle -o out
+```json
+{ "label": "graphene", "mode": "bundle", "output_dir": "out", "operators": ["VX", "SZ"] }
 ```
 
 ```
@@ -149,25 +147,25 @@ out/graphene.w2sp/
   operators/HAM.hr.dat   VX.hr.dat   SZ.hr.dat
 ```
 
-The supercell dimensions are accepted but ignored, since nothing is expanded. Each
+The supercell dimensions are ignored, since nothing is expanded. Each
 `operators/<NAME>.hr.dat` is the same `_hr.dat` shape the tool reads, so it
-re-enters any pipeline through `--op-file`. The numbers are already
+re-enters any pipeline as a user-supplied operator. The numbers are already
 `ndegen`-normalized and written with `ndegen = 1`: the trap to avoid is dividing by
 the Wigner-Seitz degeneracy a second time, and the manifest's `normalization` block
 records that it was applied once already.
 
 What the CSR discards, the manifest keeps: the lattice and reciprocal vectors, the
 Wannier sites with their spin labels, the crystal symmetry operations, and the DFT
-and Wannier conditions behind the model. The last two are read from a Quantum
-ESPRESSO `data-file-schema.xml` and a Wannier90 `.win`, named in a small `.w2s`
-input file that drives the whole run. Scaffold it with `--create`, add the
-provenance paths, then run it:
+and Wannier conditions behind the model (see
+[Provenance tracking](../README.md#provenance-tracking)). A bundle run is just a
+`.w2s` with `"mode": "bundle"`:
+
+```json
+{ "label": "graphene", "mode": "bundle", "operators": ["VX", "SZ"] }
+```
 
 ```bash
-$W2SP_BIN --create "graphene 1 1 1 VX SZ --mode bundle" -inp graphene   # writes graphene.w2s
-# add provenance paths to graphene.w2s:
-#   "provenance": { "qe_xml": "scf.save/data-file-schema.xml", "win": "graphene.win" }
-$W2SP_BIN graphene.w2s
+wannier2sparse -x graphene.w2s
 ```
 
 This produces a bundle byte-identical to the direct command above. If a provenance
@@ -182,47 +180,6 @@ recovers the graphene Dirac touching at $E=0$.
 ctest --test-dir ../build -R bundle_hk_rebuild --output-on-failure          # PASS
 ```
 
-## One input file, and a record of what the run did
-
-The same `.w2s` that drives a bundle also drives a supercell CSR run, so a whole
-calculation lives in one traceable file instead of a long command line. The
-`"mode"` key picks the output; everything else reads the same. Scaffold the file
-from a short command with `--create`, edit it, then run it:
-
-```bash
-$W2SP_BIN --create "graphene 80 80 1 VX SZ -o out" -inp graphene   # writes graphene.w2s
-$W2SP_BIN graphene.w2s
-```
-
-```json
-{ "label": "graphene", "mode": "sparse", "output_dir": "out",
-  "supercell": [80, 80, 1], "operators": ["VX", "SZ"] }
-```
-
-This writes the same `out/graphene.HAM.CSR` and operator files a direct
-`graphene 80 80 1 VX SZ` would. Each run also leaves a log at `out/graphene.run.log`
-and ends with a summary of where the time and memory went, so a long expansion is
-never a silent black box:
-
-```
-[INFO ] ==== run summary ====
-[INFO ] total wall time: 1.204 s
-[INFO ]   load model            0.012 s
-[INFO ]   write HAM             1.100 s
-[INFO ]   write operators       0.090 s
-[INFO ] peak memory: 142.5 MiB
-[INFO ] warnings: 0   errors: 0
-```
-
-Warnings and errors are always reported and counted (use `--quiet` to keep only
-those on the console, `--verbose` for the full trace), and any error makes the run
-exit non-zero, so a broken run fails loudly rather than producing half a dataset.
-
-The same run also writes a machine-readable receipt at `out/graphene.out`: the
-resolved invocation, the per-step timings and peak memory above, and an `outputs`
-ledger naming every operator written together with the input files (`_hr.dat`,
-`.uc`, `.xyz`, …) that produced it — so each artifact carries its own provenance.
-
 ## A real Wannier90 model: silicon, with the Wigner-Seitz minimum image
 
 Unlike the ideal models above, silicon ($sp^3$, SOC-free) is a real DFT-derived
@@ -233,7 +190,8 @@ auto-detects the minimum-image correction from the presence of
 ```bash
 # the fixture lives outside the repo (regenerate it, see below); point the tool at it
 cd models/wannier/silicon
-$W2SP_BIN silicon 8 8 8                          # WS auto-on (silicon_wsvec.dat present)
+echo '{ "label": "silicon", "mode": "sparse", "supercell": [8, 8, 8] }' > silicon.w2s
+wannier2sparse -x silicon.w2s                    # WS auto-on (silicon_wsvec.dat present)
 python3 /path/to/examples/w2s_dos.py silicon.HAM.CSR --out silicon_dos.png
 ```
 
@@ -258,7 +216,7 @@ the three lattice vectors from `silicon.win`; a velocity operator would also nee
 `num_wann` header followed by the first `num_wann` `label x y z` rows of
 `_centres.xyz`).
 
-## Orbital angular momentum: copper, with `--orbital-L`
+## Orbital angular momentum: copper, with `orbital_L`
 
 Copper (a complete $\ell=2$ shell `Cu:d` plus two interstitial $s$) is the
 orbital-$L$ example. Correctness is anchored to the repo's own test, not
@@ -267,7 +225,8 @@ re-derived here:
 ```bash
 W2SP_ORBITAL_FIXTURE=/path/to/copper/copper \
   ctest --test-dir ../../../build -R orbital_L_fixture --output-on-failure   # PASS
-$W2SP_BIN copper 7 7 7 --orbital-L          # writes copper.{LX,LY,LZ}.CSR (range 3 -> N>=7)
+echo '{ "label": "copper", "mode": "sparse", "supercell": [7, 7, 7], "orbital_L": true }' > copper.w2s
+wannier2sparse -x copper.w2s                # writes copper.{LX,LY,LZ}.CSR (range 3 -> N>=7)
 ```
 
 ![The on-site Lz eigenvalues forming the integer ladder minus two to plus two](img/copper_Lz.png)
@@ -280,7 +239,7 @@ Hermitian but not integer-valued, because Wannier functions are not pure spheric
 harmonics; the integer ladder lives on the local block, not the projected one (see
 [docs/conventions.md](../docs/conventions.md) §5 and [docs/operators.md](../docs/operators.md) §2.4).
 
-## Exact spin and spin-orbit: iron, with `--exact-spin`
+## Exact spin and spin-orbit: iron, with `exact_spin`
 
 BCC iron with SOC (`spinors`) is the spin example, the only fixture with a `.spn`.
 Spin-operator correctness is carried by tests, not by a figure:
@@ -290,7 +249,8 @@ ctest --test-dir ../../../build -R gauge_spin --output-on-failure              #
 # with the Fe fixture + committed goldens present, the independent cross-checks:
 W2SP_SPIN_FIXTURE=/path/to/Fe/Fe \
   ctest --test-dir ../../../build -R 'wberri_(matrix|texture)_crosscheck'      # PASS
-$W2SP_BIN Fe 13 13 13 --exact-spin           # writes Fe.{SXexact,SYexact,SZexact}.CSR
+echo '{ "label": "Fe", "mode": "sparse", "supercell": [13, 13, 13], "exact_spin": true }' > Fe.w2s
+wannier2sparse -x Fe.w2s                      # writes Fe.{SXexact,SYexact,SZexact}.CSR
 ```
 
 ![Band-resolved spin expectation values along the iron bands](img/iron_spin_texture.png)

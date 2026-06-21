@@ -67,18 +67,20 @@ next step reads these as the primitive operator $H_{ij}(\mathbf{R})$.
 ## Step 2: run it from an input file
 
 The Hamiltonian is the only operator we need for a density of states, so we expand
-it alone. The recommended way to drive the expansion is a `.w2s` input file: a JSON
-document (with `//` comments allowed) that records the run in one validated place:
+it alone. Put
+
+```json
+{ "label": "cubic", "mode": "sparse", "supercell": [18, 18, 18] }
+```
+
+in `cubic.w2s` and run it:
 
 ```bash
-wannier2sparse --create "cubic 18 18 18" -inp cubic   # 1. write cubic.w2s
-wannier2sparse cubic.w2s                              # 2. run -> cubic.HAM.CSR
+wannier2sparse -x cubic.w2s        # -> cubic.HAM.CSR
 ```
 
 This replicates each primitive $H_{ij}(\mathbf{R})$ across the supercell, PBC-wraps
-it, and folds everything into one sparse `cubic.HAM.CSR` plus a JSON run receipt
-`cubic.out`. Prefer the input file (self-documenting, reproducible); the older
-positional one-liner `wannier2sparse cubic 18 18 18` gives byte-identical output.
+it, and folds everything into one sparse `cubic.HAM.CSR`.
 
 ## Step 3: the cost scales with the sites, but 3D forces a small cell
 
@@ -106,14 +108,13 @@ which reconstructs the same closed-form $\rho(E)$ with no stochastic noise.
 
 Expanding to a CSR commits to one supercell size now. The alternative is to ship the
 primitive operator and let a downstream consumer choose its own resolution later.
-Set `"mode": "bundle"` in `cubic.w2s` (or scaffold a fresh one with `--mode bundle`):
+Set `"mode": "bundle"` in `cubic.w2s` and run it again:
 
 ```bash
-wannier2sparse --create "cubic 18 18 18 --mode bundle" -inp cubic   # write cubic.w2s
-wannier2sparse cubic.w2s
+wannier2sparse -x cubic.w2s
 ```
 
-In `bundle` mode the supercell dimensions are accepted but ignored, because nothing
+In `bundle` mode the supercell dimensions are ignored, because nothing
 is expanded. Instead of a folded CSR, the run writes the primitive $H_{ij}(\mathbf{R})$
 plus a JSON manifest to `cubic.w2sp/`. The consumer (the KPM package lsquant) holds the
 model itself, forms $H(\mathbf{k}) = \sum_{\mathbf{R}} e^{i\mathbf{k}\cdot\mathbf{R}} H(\mathbf{R})$
@@ -132,20 +133,18 @@ not divide by the Wigner-Seitz degeneracy a second time.
   doubling the sites roughly doubles the work, with no cubic cost from diagonalization.
 - In 3D the site count is $N^3$, so the supercell stays modest and its size, not the
   moment count, is the binding resolution dial: the 3D DOS is coarser than the 2D one.
-- `--mode sparse` expands to a supercell CSR now and fixes that resolution;
-  `--mode bundle` keeps the primitive $O_{ij}(\mathbf{R})$ so the consumer sets it later.
+- `"mode": "sparse"` expands to a supercell CSR now and fixes that resolution;
+  `"mode": "bundle"` keeps the primitive $O_{ij}(\mathbf{R})$ so the consumer sets it later.
 
 The next tutorial reuses this same expand-versus-bundle choice on a model where the
 unexpanded $H(\mathbf{R})$ carries topology the folded spectrum alone would hide.
 
 ## References and links
 
-- wannier2sparse source and documentation: https://github.com/adamecius/wannier2sparse
-- Operator and gauge conventions: docs/conventions.md and docs/operators.md.
-- Wannier functions: N. Marzari et al., Rev. Mod. Phys. 84, 1419 (2012),
-  arXiv:1112.5411. Wannier90: G. Pizzi et al., J. Phys. Condens. Matter 32,
-  165902 (2020), arXiv:1907.09788.
+- Kernel polynomial method: A. Weiße, G. Wellein, A. Alvermann, H. Fehske,
+  Rev. Mod. Phys. 78, 275 (2006),
+  [arXiv:cond-mat/0504627](https://arxiv.org/abs/cond-mat/0504627).
 - Transport methodology: Z. Fan, J. H. Garcia, A. W. Cummings et al., Linear
   scaling quantum transport methodologies, Phys. Rep. 903, 1 (2021),
-  arXiv:1811.07387.
-- Installation: see the main README of the repository.
+  [arXiv:1811.07387](https://arxiv.org/abs/1811.07387).
+- wannier2sparse source and documentation: https://github.com/adamecius/wannier2sparse
