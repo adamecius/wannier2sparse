@@ -165,10 +165,33 @@ These operators are derived from `H_ij(R)` directly and need only `.uc`, `.xyz`,
 - **Hamiltonian `H_ij(R)`** — read from `<seed>_hr.dat`, divided by `ndegen(R)`
   on ingest ([create_hopping_list](../include/hopping_list.hpp)); optional
   Wigner-Seitz minimum-image refinement from `_wsvec.dat`. Units eV.
-- **Velocity / current `V_d = −i · dr_d · H`** — each hopping is multiplied by the
-  Cartesian displacement between its initial and final Wannier centers
-  (`r_j + R − r_i`), so it needs the centers (`.xyz`) and lattice (`.uc`). Units
-  eV·Å. [createHoppingCurrents_list](../include/tbmodel.hpp).
+- **Velocity / current** — a three-rung ladder selected by `--velocity-mode`
+  (`bare` | `berry_connection` | `covariant`), applied to `VX/VY/VZ` *and* to the
+  velocity inside any spin current `J=½{V,S}`. All units eV·Å.
+  [createHoppingCurrents_list / createCovariantVelocity_list](../include/tbmodel.hpp).
+
+  | mode | formula | needs | use |
+  |------|---------|-------|-----|
+  | `bare` | `v_d(R) = −i(R·lat)_d H(R)` | `_hr.dat`, `.uc` | pure gradient ∂H/∂k; topology-only |
+  | `berry_connection` *(default)* | `v_d(R) = −i(R·lat + Δr_ij)_d H(R)` | + `.xyz` | adds diagonal Wannier centres; = `bare − i[H,A_diag]` |
+  | `covariant` | `v_d(R) = −i(R·lat)_d H(R) − i[H, A_d](R)` | + `_r.dat` | full Berry connection `A_d(R)=⟨0i|r_d|Rj⟩` |
+
+  - The default (`berry_connection`) is **byte-identical** to the historical
+    one-argument velocity, so every `VX/VY` golden is preserved.
+  - **Interband quantities need the Berry connection.** `bare`/`berry_connection`
+    give the correct band group velocity and are sufficient for the DOS and `σ_xx`.
+    For interband responses (anomalous/spin Hall) the off-diagonal `⟨n|v|m⟩` carry
+    the inter-Wannier dipoles, so prefer `covariant`. It reads `A_d(R)` from
+    Wannier90's `<seed>_r.dat` (`write_rmn=.true.`; override the path with
+    `--r-dat`) and forms the standard Wang–Yates–Souza–Vanderbilt covariant
+    velocity `∂_d H + i[H,A_d]` (here in the tool's overall `−i` sign convention).
+    Because `[H,A_diag]_ij=(r_j−r_i)H_ij`, the `covariant` mode reduces exactly to
+    `berry_connection` when `A_d` is diagonal — the off-diagonal part is the new
+    physics. **Pitfall:** `H` and `_r.dat` must come from the *same* Wannier90 run
+    (same gauge); mixing an `_r.dat` from a different gauge (e.g. transcoded from
+    another code's position matrix) silently corrupts the off-diagonal correction.
+    The sign/normalization follows Wannier90 `postw90/get_oper.F90`
+    (`get_AA_R`)/`berry.F90`.
 - **Density** — keep onsite (`R=0`) terms, zero translations.
   [createHoppingDensity_list](../include/tbmodel.hpp).
 - **Label-spin `S_α`** — built from the *spin doubling*, not from `H`'s onsite
@@ -178,10 +201,21 @@ These operators are derived from `H_ij(R)` directly and need only `.uc`, `.xyz`,
   spinless model. [createHoppingSpinDensity_list](../include/tbmodel.hpp).
   *This is a heuristic*: it requires the orbital labels to mark spin and assumes a
   collinear spin frame. For SOC/noncollinear models use `--exact-spin` (§2.3).
-- **Spin current `J_d S_α`** — the velocity operator projected through the spin
-  channel; in CSR mode the production form is the anticommutator `½{V_d, S_α}`
-  assembled after supercell expansion. Units eV·Å·ħ/2.
-  [createHoppingSpinCurrents_list](../include/tbmodel.hpp) + `--spin-current`.
+  If the up/down pairing is ambiguous or incomplete (common for real spinor
+  Wannier models), `map_id2partner` now **throws a clear error** (it no longer
+  asserts/aborts) pointing to the `--exact-spin` (`.spn`) route or to ingesting a
+  precomputed spin operator via `--op-file S{X,Y,Z} <seed>_S?_hr.dat`. A
+  **tight-binding** user with `*_spin_hr.dat` (or per-component `*_S?_hr.dat`)
+  passes them the same way and skips the label heuristic entirely.
+- **Spin current `J_d S_α = ½{V_d, S_α}`** — in CSR mode the production form is the
+  **matrix anticommutator** `½(V_d S_α + S_α V_d)` assembled after supercell
+  expansion (`--spin-current`), which is correct for any `α`. The primitive,
+  element-wise `createHoppingSpinCurrents_list` is exact only for the **diagonal**
+  `S_z` (`J^z` = `v·s_i` on the same-spin block, **zero on the opposite-spin
+  block** — the latter was previously left un-zeroed, a bug for SOC, now fixed);
+  for off-diagonal `S_{x,y}` it cannot be written element-wise, so use
+  `--spin-current`. Units eV·Å·ħ/2.
+  [createHoppingSpinCurrents_list](../include/tbmodel.hpp).
 
 ---
 

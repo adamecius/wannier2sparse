@@ -10,6 +10,9 @@
 #include <iostream>
 #include <sstream>
 #include <cctype>
+#include <functional>
+#include <memory>
+#include <array>
 
 #include "w2sp_arguments.hpp"
 #include "tbmodel.hpp"
@@ -148,11 +151,42 @@ static OperatorDescriptor op_descriptor(const string& code)
  * Dispatches the operator name to the matching tbmodel builder. Returns false for a
  * name the parser accepted but this build cannot produce.
  */
-static bool build_operator(tbmodel& model, const string& op, hopping_list& out)
+/**
+ * @brief Build the velocity builder for the active velocity_mode (the velocity ladder).
+ * @param model loaded tight-binding model
+ * @param args  parsed arguments (velocity_mode, optional r_dat path)
+ * @param in_prefix resolved input stem (for the default <seed>_r.dat)
+ * @return functor dir -> velocity hopping_list
+ *
+ * bare/berry_connection need only H + .xyz; covariant additionally reads the
+ * position matrix `_r.dat` once and forms v = -i(R.lat)H - i[H,A]. Throws if the
+ * covariant mode is requested without a readable `_r.dat`.
+ */
+static std::function<hopping_list(int)>
+make_velocity_builder(tbmodel& model, const W2SP_arguments& args, const string& in_prefix)
 {
-    if (op == "VX") { out = model.createHoppingCurrents_list(0); return true; }
-    if (op == "VY") { out = model.createHoppingCurrents_list(1); return true; }
-    if (op == "VZ") { out = model.createHoppingCurrents_list(2); return true; }
+    if (args.velocity_mode == "covariant")
+    {
+        const string rpath = args.r_dat_path.empty() ? (in_prefix + "_r.dat") : args.r_dat_path;
+        if (!file_exists(rpath))
+            throw std::runtime_error("velocity_mode=covariant needs the position matrix '" + rpath +
+                "' (Wannier90 'write_rmn' _r.dat). Pass --r-dat PATH, set r_dat in the input file, "
+                "or use velocity_mode=berry_connection.");
+        auto A = std::make_shared<std::array<hopping_list,3> >(model.readPositionMatrix(rpath));
+        cout << "Velocity mode: covariant (Berry connection from " << rpath << ")\n";
+        return [&model, A](int dir){ return model.createCovariantVelocity_list(dir, (*A)[dir]); };
+    }
+    const bool bare = (args.velocity_mode == "bare");
+    cout << "Velocity mode: " << args.velocity_mode << "\n";
+    return [&model, bare](int dir){ return model.createHoppingCurrents_list(dir, bare); };
+}
+
+static bool build_operator(tbmodel& model, const string& op, hopping_list& out,
+                           const std::function<hopping_list(int)>& make_velocity)
+{
+    if (op == "VX") { out = make_velocity(0); return true; }
+    if (op == "VY") { out = make_velocity(1); return true; }
+    if (op == "VZ") { out = make_velocity(2); return true; }
 
     if (op == "SX") { out = model.createHoppingSpinDensity_list('x'); return true; }
     if (op == "SY") { out = model.createHoppingSpinDensity_list('y'); return true; }
@@ -351,10 +385,13 @@ static int run_bundle_mode(const W2SP_arguments& args, Logger& log, RunStats& st
     }
 
     // Requested generated operators (velocity / spin / spin-current).
+    std::function<hopping_list(int)> make_velocity;
+    try { make_velocity = make_velocity_builder(model, args, in_prefix); }
+    catch (const std::exception& e) { cerr << args.program_name << ": error: " << e.what() << "\n"; return 1; }
     for (const auto& opname : args.operators)
     {
         hopping_list h;
-        if (!build_operator(model, opname, h))
+        if (!build_operator(model, opname, h, make_velocity))
         {
             log.error("operator '" + opname + "' is not supported by this build");
             return 1;
@@ -601,13 +638,17 @@ static int run_sparse_mode(const W2SP_arguments& args, Logger& log, RunStats& st
         }
     }
 
+    // Velocity builder for the active velocity ladder (bare/berry_connection/
+    // covariant); reused by the operators loop and the spin currents below.
+    const std::function<hopping_list(int)> make_velocity = make_velocity_builder(model, args, in_prefix);
+
     if (!args.operators.empty())
     {
         ScopedTimer t(log, stats, "write operators");
         for (const auto& op : args.operators)
         {
             hopping_list h;
-            if (!build_operator(model, op, h))
+            if (!build_operator(model, op, h, make_velocity))
             {
                 log.error("operator '" + op + "' is not supported by this build");
                 return 1;
@@ -656,16 +697,16 @@ static int run_sparse_mode(const W2SP_arguments& args, Logger& log, RunStats& st
             log.at(Logger::INFO) << "writing spin current " << name << " = 1/2{V" << vs.first
                                  << ",S" << vs.second << "} -> " << prefix << "." << name << ".CSR";
 
-            const SparseMatrix_t V = supercell_matrix(args.cellDim, model.createHoppingCurrents_list(vdir));
+            const SparseMatrix_t V = supercell_matrix(args.cellDim, make_velocity(vdir));
             const SparseMatrix_t S = supercell_matrix(args.cellDim, model.createHoppingSpinDensity_list(sdir));
             write_csr(anticommutator(V, S), prefix + "." + name + ".CSR");
             if (args.emit_descriptor)
                 write_descriptor(describe("spin_current", string(1, vs.first) + "S" + vs.second,
-                                          "eV*Angstrom*hbar/2", "anticommutator 1/2{V,S}"),
+                                          "eV*Angstrom*hbar/2", "anticommutator 1/2{V,S} (" + args.velocity_mode + " velocity)"),
                                  prefix + "." + name + ".desc");
             rep.add_output(name, prefix + "." + name + ".CSR", "spin_current",
                            string(1, vs.first) + "S" + vs.second, "eV*Angstrom*hbar/2",
-                           "anticommutator 1/2{V,S}", gen_src);
+                           "anticommutator 1/2{V,S} (" + args.velocity_mode + " velocity)", gen_src);
         }
     }
 

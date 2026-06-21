@@ -283,6 +283,8 @@ wannier2sparse run.w2s                   # identical output to the equivalent CL
 | `output_dir` | Where outputs and the log file are written. |
 | `supercell` | `[N1, N2, N3]` supercell dimensions (sparse mode). |
 | `operators` | Operator codes, e.g. `["VX","VY","SZ"]`. |
+| `velocity_mode` | Velocity ladder for `VX/VY/VZ` and the `V` in any spin current: `bare`, `berry_connection` (default), or `covariant` (needs `r_dat`). |
+| `r_dat` | Position matrix `_r.dat` (Wannier90 `write_rmn`) for `velocity_mode: covariant`. |
 | `spin_currents` | Derived `J = 1/2{V,S}` as `[[V,S], ...]`, e.g. `[["X","Z"]]` (sparse mode). |
 | `op_files` | External `_hr.dat` operators as `[{"name","path"}, ...]`. |
 | `exact_spin`, `orbital_L` | Build the gauge-route spin / orbital-`L` operators. |

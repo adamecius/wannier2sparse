@@ -61,6 +61,21 @@ int main()
     W2SP_arguments a; cfg.apply_to(a);
     assert(a.manual.present && a.manual.code == "QE 7.2" && a.manual.orbitals.size() == 1);
 
+    // 1b) velocity_mode round-trips and an invalid value is rejected.
+    {
+        ofstream("vmode.w2s") << "{ \"label\":\"x\", \"velocity_mode\":\"covariant\", \"r_dat\":\"x_r.dat\" }\n";
+        RunConfig vc = read_run_config("vmode.w2s");
+        assert(vc.has_velocity_mode && vc.velocity_mode == "covariant");
+        assert(vc.has_r_dat && vc.r_dat == "x_r.dat");
+        W2SP_arguments va; vc.apply_to(va);
+        assert(va.velocity_mode == "covariant" && va.covariant_velocity && va.r_dat_path == "x_r.dat");
+
+        ofstream("vbad.w2s") << "{ \"label\":\"x\", \"velocity_mode\":\"nope\" }\n";
+        bool threw = false;
+        try { read_run_config("vbad.w2s"); } catch (const std::exception&) { threw = true; }
+        assert(threw && "invalid velocity_mode must throw");
+    }
+
     // 2) An unterminated block comment is a clear error, not silent acceptance.
     {
         ofstream("badcomment.w2s") << "{ \"label\": \"x\" /* never closed }\n";

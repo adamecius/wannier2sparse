@@ -68,6 +68,8 @@ struct RunConfig
     bool        has_emit_bounds;  bool        emit_bounds;
     bool        has_checks;       std::string checks;                     ///< --check selector
     bool        has_truncation;   double      truncation_threshold;
+    bool        has_velocity_mode; std::string velocity_mode; ///< bare|berry_connection|covariant
+    bool        has_r_dat;        std::string r_dat;        ///< position matrix _r.dat (covariant)
     bool        has_qe_xml;       std::string qe_xml;
     bool        has_win;          std::string win;
     bool        has_manual;       ManualProvenance manual;  ///< user-declared provenance block
@@ -81,7 +83,8 @@ struct RunConfig
           has_op_files(false), has_exact_spin(false), exact_spin(false),
           has_orbital_l(false), orbital_l(false), has_emit_bounds(false),
           emit_bounds(false), has_checks(false), has_truncation(false),
-          truncation_threshold(0.0), has_qe_xml(false), has_win(false),
+          truncation_threshold(0.0), has_velocity_mode(false), has_r_dat(false),
+          has_qe_xml(false), has_win(false),
           has_manual(false), has_log_level(false), has_log_file(false) {}
 
     /**
@@ -107,6 +110,8 @@ struct RunConfig
         if (has_emit_bounds)  a.emit_descriptor = emit_bounds;
         if (has_checks)       a.check        = checks;
         if (has_truncation)   { a.truncation_threshold = truncation_threshold; a.has_truncation = true; }
+        if (has_velocity_mode) { a.velocity_mode = velocity_mode; a.covariant_velocity = (velocity_mode == "covariant"); }
+        if (has_r_dat)        a.r_dat_path    = r_dat;
         if (has_qe_xml)       a.qe_xml_path  = qe_xml;
         if (has_win)          a.win_path     = win;
         if (has_manual)       a.manual       = manual;

@@ -383,6 +383,14 @@ RunConfig read_run_config(const std::string& path)
         }
     }
 
+    if (const JsonValue* v = find(root, "velocity_mode"))
+    {
+        cfg.has_velocity_mode = true;
+        cfg.velocity_mode = expect_string(*v, "velocity_mode");
+        if (cfg.velocity_mode != "bare" && cfg.velocity_mode != "berry_connection" && cfg.velocity_mode != "covariant")
+            throw std::runtime_error("run.json: 'velocity_mode' must be bare|berry_connection|covariant");
+    }
+    if (const JsonValue* v = find(root, "r_dat")) { cfg.has_r_dat = true; cfg.r_dat = expect_string(*v, "r_dat"); }
     if (const JsonValue* v = find(root, "exact_spin")) { cfg.has_exact_spin = true; cfg.exact_spin = expect_bool(*v, "exact_spin"); }
     // Accept both "orbital_L" (matches the CLI flag spelling) and "orbital_l".
     if (const JsonValue* v = find(root, "orbital_L")) { cfg.has_orbital_l = true; cfg.orbital_l = expect_bool(*v, "orbital_L"); }
@@ -460,6 +468,10 @@ void write_run_config(const W2SP_arguments& a, std::ostream& os)
             w.end_array();
         }
 
+        // Velocity ladder: only emit when it differs from the default so existing
+        // files stay minimal; r_dat only when a covariant override path was given.
+        if (a.velocity_mode != "berry_connection") w.member("velocity_mode", a.velocity_mode);
+        if (!a.r_dat_path.empty())                  w.member("r_dat", a.r_dat_path);
         if (a.exact_spin)      w.member("exact_spin", true);
         if (a.orbital_l)       w.member("orbital_L", true);
         if (a.emit_descriptor) w.member("emit_bounds", true);
@@ -504,6 +516,11 @@ void write_run_config_template(std::ostream& os)
 "  // Operators to build. Valid: VX VY VZ  SX SY SZ  and spin currents VXSX..VZSZ.\n"
 "  // The Hamiltonian (HAM) is always written; leave this empty for HAM only.\n"
 "  \"operators\": [\"VX\", \"VY\", \"SZ\"],\n"
+"\n"
+"  // Velocity ladder for VX/VY/VZ and the V inside any spin current:\n"
+"  //   bare = -i(R.lat)H ; berry_connection = +Wannier centres (default) ; covariant = full Berry (needs _r.dat)\n"
+"  \"velocity_mode\": \"berry_connection\",\n"
+"  // \"r_dat\": \"<seed>_r.dat\",   // position matrix for velocity_mode=covariant\n"
 "\n"
 "  // Derived spin currents J = 1/2{V,S}, each [velocity axis, spin axis].\n"
 "  \"spin_currents\": [[\"X\", \"Z\"]],\n"

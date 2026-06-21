@@ -27,6 +27,32 @@ $N^{1/3}$ per side in 3D). Building the tool is covered once in the top-level
 [README](../README.md); set `W2SP_BIN=/path/to/wannier2sparse` if it is not at
 `../build/wannier2sparse`.
 
+The recommended way to drive a run is the **input-file workflow**: record the
+options in an editable `key = value` file, then execute it. It is self-documenting
+and reproducible (the older positional CLI gives byte-identical output):
+
+```bash
+wannier2sparse --create graphene.inp                      # 1. write a template
+wannier2sparse --write label=graphene    -inp graphene.inp    # 2. populate it
+wannier2sparse --write supercell 80 80 1 -inp graphene.inp
+wannier2sparse --run graphene.inp                         # 3. run -> graphene.HAM.CSR + graphene.w2sp.out
+```
+
+The exact, supercell-free reference for any reconstructed `_hr.dat` (bands, DOS,
+conductivity, spin Hall) is [`tools/hr_exactdiag.py`](../tools/hr_exactdiag.py).
+
+## Tutorials
+
+Each model is a short, self-contained tutorial; they build on one another:
+
+| # | Tutorial | Teaches |
+|---|---|---|
+| 1 | [`01_chain1d`](01_chain1d/) | the full pipeline: primitive $O_{ij}(R)$ to supercell CSR to KPM DOS; the input-file CLI; supercell size as the resolution dial |
+| 2 | [`02_graphene`](02_graphene/) | the exact-diagonalization cross-check (`hr_exactdiag`) as the oracle for the stochastic KPM |
+| 3 | [`03_cubic`](03_cubic/) | linear scaling and the $N^3$ resolution trade in 3D; `--mode sparse` vs `--mode bundle` |
+| 4 | [`04_haldane`](04_haldane/) | complex hoppings and a gap; how $H(R)$ carries the ingredients of topology |
+| 9 | [`example_9_SHC_in_PdSe2`](example_9_SHC_in_PdSe2/) | a real SOC Wannier model end to end: operators, the spin current, and the intrinsic spin Hall conductivity |
+
 ## The physics each model shows
 
 Every model has a closed-form spectrum, so the figure is checked against an
