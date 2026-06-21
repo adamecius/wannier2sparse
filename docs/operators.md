@@ -36,6 +36,17 @@ Keeping `R` (instead of collapsing it into an expanded supercell CSR) is exactly
 what lets a downstream consumer rebuild `O(k)` itself — see `--mode bundle` below
 and [include/bundle_writer.hpp](../include/bundle_writer.hpp).
 
+> **On-the-fly `H(k)` is the parsing-correctness invariant.** `H(k) = Σ_R
+> e^{+i2πk·R} H(R)/ndegen(R)`, evaluated point-by-point on the original Wannier90
+> mp_grid, is the cheapest end-to-end check that the `_hr.dat` — and with it the
+> `ndegen`, WS, and sign conventions of [conventions.md §1](conventions.md) — was
+> parsed correctly: the interpolated eigenvalues must reproduce the DFT bands in
+> `<seed>.eig` on that grid to numerical precision. If that closes, the same
+> `O(R)` read-and-Fourier-sum machinery is correct for *every* operator the tool
+> emits. This is why the `examples/` gallery rebuilds `H(k)` directly and the
+> gauge-route operators are cross-checked the same way against a WannierBerri
+> golden (§5, [conventions.md §7](conventions.md)).
+
 There are **two ways** an operator gets into `O_ij(R)` form, and the difference is
 the whole point of this document:
 
@@ -219,7 +230,7 @@ run. Per operator, the inputs are:
 | `<seed>.uc` | you / converter | lattice vectors (Å) | velocity, spin-current, manifest structure |
 | `<seed>.xyz` | you / converter | Wannier-center positions + spin label tags | velocity, label-spin, spin-current |
 | `<seed>_wsvec.dat` | `wannier90.x` (`use_ws_distance`) | minimum-image `T`-vectors | optional WS refinement of every operator |
-| `<seed>.eig` | `pw2wannier90.x` | band energies | optional Hamiltonian spectral bounds `(a,b)` |
+| `<seed>.eig` | `pw2wannier90.x` | band energies | optional Hamiltonian spectral bounds `(a,b)`; on-the-fly `H(k)` cross-check (§1) |
 | **`<seed>_u.mat`** | `wannier90.x` | **`U(k)`** (num_wann²) | **gauge route** (exact spin, orbital `L`) |
 | **`<seed>_u_dis.mat`** | `wannier90.x` (entangled only) | **`U_dis(k)`** (num_bands×num_wann) | **gauge route** when `num_bands > num_wann` |
 | **`<seed>.spn`** | `pw2wannier90.x` (`write_spn`) | `S_B^α(k) = ⟨ψ|σ_α|ψ⟩` | **exact spin** |
@@ -308,11 +319,46 @@ The gauge route is cross-checked end-to-end: the emitted `S_W(R)` inverse-transf
 back to `V(k)†S_B(k)V(k)` on the mp_grid
 ([test/spin_roundtrip_crosscheck.cpp](../test/spin_roundtrip_crosscheck.cpp), max
 error ≈ 2.7e-9 on the Fe fixture), and matches an independent WannierBerri golden to
-~1e-9 at the matrix level ([conventions.md §7](conventions.md)).
+~1e-9 at the matrix level
+([test/wberri_matrix_crosscheck.cpp](../test/wberri_matrix_crosscheck.cpp),
+[test/wberri_texture_crosscheck.cpp](../test/wberri_texture_crosscheck.cpp);
+[conventions.md §7](conventions.md)).
 
 ---
 
-## 6 — Pointers
+## 6 — To-do: k-space response operators (candidate additions)
+
+Everything above produces a real-space `O_ij(R)` for KPM/Chebyshev evaluation of
+Kubo–Greenwood / Bastin formulas in a supercell. The sibling W90 post-processors
+(WannierBerri, WannierTools, Wannier90's own `postw90` `berry` module) instead
+build **k-space Berry-curvature** responses — anomalous Hall (AHC), spin Hall
+(SHC), orbital Hall, orbital magnetization, Nernst — by Wannier-interpolating the
+*velocity* and the *Berry connection* `A(k)` on a dense k-mesh. These are the
+natural next operators for this tool, and they share the §1 primitive `O(R)`:
+
+- **Position / Berry-connection matrix `A(R)`** — the piece this tool lacks. The
+  interpolated velocity is `v(k) = dH/dk + i[H(k), A(k)]`; the `i[H,A]` term is the
+  gauge correction the bare `−i·dr·H` geometric velocity (§3) omits. `A(R)` comes
+  from the `<seed>.mmn`-derived `⟨0n|r|Rm⟩` matrices (Wannier90 `_r.dat`,
+  `write_rmn`). **Highest-value addition** — it unlocks AHC, SHC, and orbital
+  quantities at once, needs only one extra W90 input, and is carried as just
+  another `O(R)` family.
+- **AHC / Berry curvature** — `Ω_n(k)` from off-diagonal velocity matrix elements
+  (Wang–Yates–Souza–Vanderbilt PRB 73, 195118 (2006)); Fermi-sea integral.
+- **SHC** — spin-current operator `j_s = ½{v, s}` (Qiao/Ryoo/Freimuth), the
+  k-space analogue of the §3 `½{V,S}` already built here, with `s` from `.spn`.
+- **Orbital Hall / orbital magnetization** — Lopez–Vanderbilt modern-theory
+  formula, reusing the §2.4 `L` machinery.
+
+These are **not implemented**; this section is a placeholder tracking the gap. The
+open design question — whether the on-the-fly `H(k) = Σ_R e^{ik·R}H(R)` path grows
+a dedicated k-space Berry module, or KPM absorbs these via current–current
+correlators — is being evaluated against the WannierBerri/WannierTools approaches.
+See `roadmap_plans.md` for phase status.
+
+---
+
+## 7 — Pointers
 
 - Gauge data + exact operators: [include/gauge.hpp](../include/gauge.hpp),
   [src/gauge.cpp](../src/gauge.cpp)
@@ -321,5 +367,3 @@ error ≈ 2.7e-9 on the Fe fixture), and matches an independent WannierBerri gol
 - Core data structure + FT: [include/hopping_list.hpp](../include/hopping_list.hpp)
 - Format/sign conventions (authoritative): [docs/conventions.md](conventions.md)
 - CLI: [include/w2sp_arguments.hpp](../include/w2sp_arguments.hpp), [src/main.cpp](../src/main.cpp)
-</content>
-</invoke>
