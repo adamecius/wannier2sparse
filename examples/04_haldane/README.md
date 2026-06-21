@@ -134,9 +134,10 @@ with $20$ meV Gaussian broadening on the Fermi sweep.
 
 The quantization is what "topological" means operationally: the plateau height is
 an integer pinned by the global structure of the occupied band, immune to the
-exact value of $t_2$ or $\phi$ as long as the gap stays open. Contrast this with
-Tutorial 9, where a *trivial* insulator (PdSe$_2$) shows a large spin Hall
-response that is **not** a quantized plateau.
+exact value of $t_2$ or $\phi$ as long as the gap stays open. The same fingerprint
+reappears in Tutorial 9 for a real material: PdSe$_2$ is trivial at its Fermi-level
+gap, but a higher, topological gap shows a flat, near-quantized **spin** Hall
+plateau at $+0.94\,e^2/h$ — the same integer-step signature, in the spin channel.
 
 ## What to take away
 
