@@ -63,23 +63,22 @@ step reads these files.
 
 ## Step 2: describe the run in an input file, then run it
 
-The recommended way to drive a run is the input-file workflow: record every option
-in an editable `key = value` file, then execute it. Create a template, populate the
-label and the supercell, and run it.
+The recommended way to drive a run is a `.w2s` input file: a JSON document (which
+tolerates `//` comments) that records every option in one validated, reproducible
+place. Scaffold one from a short command, then run it.
 
 ```bash
-wannier2sparse --create chain1d.inp                    # 1. write a template
-wannier2sparse --write label=chain1d    -inp chain1d.inp   # 2. populate it
-wannier2sparse --write supercell 400 1 1 -inp chain1d.inp
-wannier2sparse --run chain1d.inp                       # 3. run -> chain1d.HAM.CSR
+wannier2sparse --create "chain1d 400 1 1" -inp chain1d   # 1. write chain1d.w2s
+wannier2sparse chain1d.w2s                               # 2. run -> chain1d.HAM.CSR
 ```
 
 The supercell engine replicates each primitive block $H(R)$ across $N$ cells and
 PBC-wraps it, turning the three-number model into one $N\times N$ sparse matrix
 whose eigenvalues are $2t\cos k$ sampled at the $N$ allowed momenta $k=2\pi n/N$.
-`--run` writes the expanded `chain1d.HAM.CSR` and a provenance summary of the
-resolved options and produced files, `chain1d.w2sp.out`. Because the input file is
-self-documenting and reproducible, prefer it; the older one-line positional form
+The run writes the expanded `chain1d.HAM.CSR` and a JSON run receipt `chain1d.out`
+(the resolved options, per-step timing, peak memory, and the input files that
+produced each operator). Because the input file is self-documenting and
+reproducible, prefer it; the older one-line positional form
 `wannier2sparse chain1d 400 1 1` produces byte-identical output.
 
 ## Step 3: the supercell size is the resolution dial on the spectrum
@@ -125,8 +124,8 @@ its own.
   how it is sampled and drawn, never what it contains.
 - The supercell size $N$ sets the energy sampling and the KPM moment count $M$
   sets the broadening; a smooth, faithful curve needs both.
-- The input-file workflow (`--create` / `--write` / `--run`) records a run as an
-  editable file and reproduces the positional CLI byte for byte.
+- The `.w2s` input file records a run as one self-documenting JSON file and
+  reproduces the positional CLI byte for byte.
 
 Later tutorials reuse this exact pipeline, primitive $O_{ij}(R)$ to supercell CSR
 to KPM density, on models where the band structure is no longer a single cosine.

@@ -67,19 +67,17 @@ next step reads these as the primitive operator $H_{ij}(\mathbf{R})$.
 ## Step 2: run it from an input file
 
 The Hamiltonian is the only operator we need for a density of states, so we expand
-it alone. The recommended way to drive the expansion is the input-file workflow,
-which records the run as an editable `key = value` file and then executes it:
+it alone. The recommended way to drive the expansion is a `.w2s` input file: a JSON
+document (with `//` comments allowed) that records the run in one validated place:
 
 ```bash
-wannier2sparse --create cubic.inp                       # 1. template
-wannier2sparse --write label=cubic       -inp cubic.inp     # 2. populate
-wannier2sparse --write supercell 18 18 18 -inp cubic.inp
-wannier2sparse --run cubic.inp                          # 3. run -> cubic.HAM.CSR
+wannier2sparse --create "cubic 18 18 18" -inp cubic   # 1. write cubic.w2s
+wannier2sparse cubic.w2s                              # 2. run -> cubic.HAM.CSR
 ```
 
 This replicates each primitive $H_{ij}(\mathbf{R})$ across the supercell, PBC-wraps
-it, and folds everything into one sparse `cubic.HAM.CSR` plus the provenance summary
-`cubic.w2sp.out`. Prefer the input file (self-documenting, reproducible); the older
+it, and folds everything into one sparse `cubic.HAM.CSR` plus a JSON run receipt
+`cubic.out`. Prefer the input file (self-documenting, reproducible); the older
 positional one-liner `wannier2sparse cubic 18 18 18` gives byte-identical output.
 
 ## Step 3: the cost scales with the sites, but 3D forces a small cell
@@ -107,14 +105,15 @@ which reconstructs the same closed-form $\rho(E)$ with no stochastic noise.
 ## Step 4: ship the model unexpanded with a bundle
 
 Expanding to a CSR commits to one supercell size now. The alternative is to ship the
-primitive operator and let a downstream consumer choose its own resolution later:
+primitive operator and let a downstream consumer choose its own resolution later.
+Set `"mode": "bundle"` in `cubic.w2s` (or scaffold a fresh one with `--mode bundle`):
 
 ```bash
-wannier2sparse --write mode=bundle -inp cubic.inp
-wannier2sparse --run cubic.inp
+wannier2sparse --create "cubic 18 18 18 --mode bundle" -inp cubic   # write cubic.w2s
+wannier2sparse cubic.w2s
 ```
 
-In `--mode bundle` the supercell dimensions are accepted but ignored, because nothing
+In `bundle` mode the supercell dimensions are accepted but ignored, because nothing
 is expanded. Instead of a folded CSR, the run writes the primitive $H_{ij}(\mathbf{R})$
 plus a JSON manifest to `cubic.w2sp/`. The consumer (the KPM package lsquant) holds the
 model itself, forms $H(\mathbf{k}) = \sum_{\mathbf{R}} e^{i\mathbf{k}\cdot\mathbf{R}} H(\mathbf{R})$

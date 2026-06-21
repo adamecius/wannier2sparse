@@ -64,21 +64,20 @@ the supercell and once as the source of the exact reference.
 
 The operator here is the Hamiltonian itself: `wannier2sparse` replicates every
 non-zero $H_{ij}(\mathbf{R})$ across the supercell and PBC-wraps it into one sparse
-matrix. The recommended way to drive that is the input-file workflow, which records
-the options in an editable `key = value` file and then executes it.
+matrix. The recommended way to drive that is a `.w2s` input file: a JSON document
+(with `//` comments allowed) that records the options in one validated place.
 
 ```bash
-wannier2sparse --create graphene.inp                     # 1. template
-wannier2sparse --write label=graphene    -inp graphene.inp   # 2. populate
-wannier2sparse --write supercell 80 80 1  -inp graphene.inp
-wannier2sparse --run graphene.inp                        # 3. run -> graphene.HAM.CSR
+wannier2sparse --create "graphene 80 80 1" -inp graphene   # 1. write graphene.w2s
+wannier2sparse graphene.w2s                                # 2. run -> graphene.HAM.CSR
 ```
 
-`--run` writes `graphene.HAM.CSR` and a provenance summary `graphene.w2sp.out`.
+The run writes `graphene.HAM.CSR` and a JSON run receipt `graphene.out` (the
+resolved options, timing, peak memory, and the input files behind each operator).
 Prefer the input file because it is self-documenting and reproducible; the older
 one-line positional form `wannier2sparse graphene 80 80 1` gives byte-identical
-output. (The `--write` forms follow `wannier2sparse --help`: a flag or operator is
-a bare token, a setting like the supercell is `key value`.)
+output. Edit `graphene.w2s` directly to add operators or change the supercell, then
+re-run it.
 
 ## Step 3: the exact bands have no supercell and no noise
 

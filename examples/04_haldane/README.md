@@ -65,21 +65,19 @@ step reads these files.
 ## Step 2: describe the run in an input file, then run it
 
 The operator we expand is $H(\mathbf{R})$ itself, the Haldane Hamiltonian, complex
-entries and all. The recommended way to drive the expansion is the input-file
-workflow, which records every option in an editable `key = value` file and then
-executes it.
+entries and all. The recommended way to drive the expansion is a `.w2s` input file:
+a JSON document (with `//` comments allowed) that records every option in one
+validated, reproducible place.
 
 ```bash
-wannier2sparse --create haldane.inp                     # 1. template
-wannier2sparse --write label=haldane     -inp haldane.inp   # 2. populate
-wannier2sparse --write supercell 80 80 1 -inp haldane.inp
-wannier2sparse --run haldane.inp                        # 3. run -> haldane.HAM.CSR
+wannier2sparse --create "haldane 80 80 1" -inp haldane   # 1. write haldane.w2s
+wannier2sparse haldane.w2s                               # 2. run -> haldane.HAM.CSR
 ```
 
 This replicates every nonzero $H_{ij}(\mathbf{R})$ across the supercell, PBC-wraps
-it, and writes `haldane.HAM.CSR` plus the provenance summary `haldane.w2sp.out`.
-The input file is a durable record of the run; prefer it over the older positional
-one-liner `wannier2sparse haldane 80 80 1`, which gives byte-identical output.
+it, and writes `haldane.HAM.CSR` plus a JSON run receipt `haldane.out`. The input
+file is a durable record of the run; prefer it over the older positional one-liner
+`wannier2sparse haldane 80 80 1`, which gives byte-identical output.
 
 ## Step 3: the complex hopping has opened a gap
 

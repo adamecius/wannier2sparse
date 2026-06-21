@@ -115,23 +115,20 @@ wannier2sparse mymodel 50 50 1 --op-file SZ mymodel_Sz_hr.dat \
 
 The single most important choice for a spin-Hall calculation is *which velocity*.
 `wannier2sparse` builds three, in increasing fidelity, and the same flag governs
-`VX/VY/VZ` and the velocity inside `J=½{V,S}`. The recommended way to drive it is
-the input-file workflow, which records the choice as a durable `key = value`:
+`VX/VY/VZ` and the velocity inside `J=½{V,S}`. The recommended way to drive it is a
+`.w2s` input file, which records the whole choice in one validated, durable place:
 
 ```bash
-wannier2sparse --create shc.inp
-wannier2sparse --write label pdse2_proj           -inp shc.inp
-wannier2sparse --write supercell 50 50 1           -inp shc.inp
-wannier2sparse --write VY                          -inp shc.inp   # operator
-wannier2sparse --write spin_current X Z            -inp shc.inp   # J^z_x = 1/2{Vx,Sz}
-wannier2sparse --write exact_spin true             -inp shc.inp
-wannier2sparse --write velocity_mode covariant     -inp shc.inp   # the ladder rung
-wannier2sparse --write r_dat pdse2_proj_r.dat      -inp shc.inp   # Berry connection
-wannier2sparse --run shc.inp
+wannier2sparse --create "pdse2_proj 50 50 1 VY --spin-current X Z --exact-spin \
+                         --velocity-mode covariant --r-dat pdse2_proj_r.dat" -inp shc
+wannier2sparse shc.w2s            # -> pdse2_proj.{HAM,VY,SXexact,SYexact,SZexact,JXSZ}.CSR + pdse2_proj.out
 ```
 
-Switch `velocity_mode` between the three rungs (or pass `--velocity-mode` on the
-positional CLI) and recompute the intrinsic $\sigma^{z}_{xy}$ for each:
+This writes `shc.w2s`, whose keys are `"velocity_mode": "covariant"`,
+`"r_dat": "pdse2_proj_r.dat"`, `"exact_spin": true`, `"spin_currents": [["X","Z"]]`
+and `"operators": ["VY"]`. Switch `velocity_mode` between the three rungs (edit
+`shc.w2s`, or pass `--velocity-mode` on the positional CLI) and recompute the
+intrinsic $\sigma^{z}_{xy}$ for each:
 
 - **`bare`** — $v_a=-i(\mathbf{R}\!\cdot\!\mathrm{lat})_a H$. The pure Bloch-phase
   gradient. Needs nothing but `_hr.dat`.
