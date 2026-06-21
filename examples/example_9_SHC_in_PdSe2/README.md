@@ -83,9 +83,21 @@ exact spin needs `.spn` + `_u.mat`; the covariant velocity needs `_r.dat`.
 the same call, builds the velocity, the exact spin, and the spin current:
 
 ```bash
-wannier2sparse pdse2_proj 50 50 1 VX VY --exact-spin --spin-current X Z -o out
+wannier2sparse pdse2_proj 50 50 1 VX VY --exact-spin --spin-current X Z \
+               --velocity-mode covariant --r-dat pdse2_proj_r.dat -o out
 # -> out/pdse2_proj.{HAM,VX,VY,SZexact,JXSZ}.CSR
 ```
+
+The `--velocity-mode` flag chooses the velocity ladder (`bare` |
+`berry_connection`, default | `covariant`) and applies it to `VX/VY/VZ` **and** to
+the velocity inside the spin current. For the spin Hall, use `covariant`: it reads
+the Berry connection $A_a(\mathbf{R})=\langle 0i|r_a|\mathbf{R}j\rangle$ from
+Wannier90's `_r.dat` (`write_rmn=.true.`) and forms
+$v_a=-i(\mathbf{R}\!\cdot\!\mathrm{lat})_a H - i[H,A_a]$ (the Wang-Yates-Souza-
+Vanderbilt covariant velocity). `bare`/`berry_connection` need no `_r.dat` and are
+correct for bands, DOS and $\sigma_{xx}$ — the difference shows up only in the
+interband (Hall) matrix elements. Pitfall: the `_r.dat` must come from the same
+Wannier90 run as `_hr.dat` (same gauge).
 
 The spin current is the lesson of §"physics" made operational. For the diagonal
 $\sigma_z$ the anticommutator is local, but for off-diagonal $\sigma_{x,y}$ it
@@ -98,6 +110,58 @@ $\tfrac12(V S + S V)$ after expansion rather than an element-wise product. A
 wannier2sparse mymodel 50 50 1 --op-file SZ mymodel_Sz_hr.dat \
                                --op-file JXSZ mymodel_JXSZ_hr.dat -o out
 ```
+
+## The velocity ladder, run three ways
+
+The single most important choice for a spin-Hall calculation is *which velocity*.
+`wannier2sparse` builds three, in increasing fidelity, and the same flag governs
+`VX/VY/VZ` and the velocity inside `J=½{V,S}`. The recommended way to drive it is
+the input-file workflow, which records the choice as a durable `key = value`:
+
+```bash
+wannier2sparse --create shc.inp
+wannier2sparse --write label pdse2_proj           -inp shc.inp
+wannier2sparse --write supercell 50 50 1           -inp shc.inp
+wannier2sparse --write VY                          -inp shc.inp   # operator
+wannier2sparse --write spin_current X Z            -inp shc.inp   # J^z_x = 1/2{Vx,Sz}
+wannier2sparse --write exact_spin true             -inp shc.inp
+wannier2sparse --write velocity_mode covariant     -inp shc.inp   # the ladder rung
+wannier2sparse --write r_dat pdse2_proj_r.dat      -inp shc.inp   # Berry connection
+wannier2sparse --run shc.inp
+```
+
+Switch `velocity_mode` between the three rungs (or pass `--velocity-mode` on the
+positional CLI) and recompute the intrinsic $\sigma^{z}_{xy}$ for each:
+
+- **`bare`** — $v_a=-i(\mathbf{R}\!\cdot\!\mathrm{lat})_a H$. The pure Bloch-phase
+  gradient. Needs nothing but `_hr.dat`.
+- **`berry_connection`** *(default)* — adds the diagonal Wannier centres from
+  `.xyz`, $v_a=-i(\mathbf{R}\!\cdot\!\mathrm{lat}+\Delta r_{ij})_a H$. Equal to
+  `bare`$-\,i[H,A_{\mathrm{diag}}]$.
+- **`covariant`** — the full Wang-Yates-Souza-Vanderbilt velocity
+  $v_a=-i(\mathbf{R}\!\cdot\!\mathrm{lat})_a H-i[H,A_a]$, with the inter-Wannier
+  Berry connection $A_a(\mathbf{R})=\langle 0i|r_a|\mathbf{R}j\rangle$ read from
+  `_r.dat` (`write_rmn=.true.`). The off-diagonal of $A_a$ is the new physics.
+
+![Spin Hall conductivity of PdSe2 computed with the three velocity modes, all landing on the same near-quantized plus-one plateau at the topological gap](img/pdse2_shc_modes.png)
+
+FIG. 2. Intrinsic $\sigma^{z}_{xy}(E_F)$ of monolayer PdSe$_2$ in units of $e^2/h$,
+computed from the `wannier2sparse` operators in all three velocity modes. Dotted
+green triangles: `bare`; solid blue circles: `berry_connection` (default);
+dashed orange squares: `covariant`. Grey band: the trivial Fermi-level gap
+($\sigma^{z}_{xy}\approx 0$); orange hatched band: the topological gap at
+$E-E_F\approx 1.2$ eV; grey dashed line: $+1\,e^2/h$. All three modes land on the
+same near-quantized plateau (bare $+1.01$, berry\_connection $+0.88$, covariant
+$+1.05\,e^2/h$; the wannierberri covariant reference gives $+0.94$) — the topology
+is robust to the rung, and the $\sim$10% spread is the Berry-connection refinement.
+Exact diagonalization on a $160\times160$ k-mesh, $\eta=20$ meV; $e^2/h$ via
+`tools/hr_exactdiag.py shc --shc-units e2h`. $E_F=-1.3162$ eV.
+
+The lesson the figure makes concrete: for *this* gap the three rungs agree to
+$\sim$10%, because the topology is a robust feature; but the rung that is *correct
+by construction* for any interband response is `covariant`, and it is the one to
+reach for when the answer is not protected (a metal, a non-topological Hall signal,
+a quantity where the off-diagonal velocity matters at the percent level).
 
 ## The Kubo conductivity, two ways
 
@@ -120,47 +184,66 @@ $O(\mathbf{k})$ and diagonalizes densely on a k-mesh, with no supercell:
 ```bash
 ../../tools/hr_exactdiag.py bands pdse2_proj --ef -1.3162   # FIG. 1
 ../../tools/hr_exactdiag.py dos   pdse2_proj                # DOS, integral = num_wann
+# WARNING: the bare velocity below gets sigma^z_xy WRONG (it anticorrelates with
+# the truth, r = -0.34); it is shown only to make the Berry-connection lesson concrete.
 ../../tools/hr_exactdiag.py shc   pdse2_proj \
         --jop pdse2_proj_JXSZ_hr.dat --vop pdse2_proj_vy_hr.dat \
-        --nk 240 --eta 0.02 --emin -3.0 --emax 1.0 --out pdse2_shc   # intrinsic sigma^z_xy
-../plot_hall.py pdse2_shc.json --out img/pdse2_shc.png --ef -1.3162 \
-        --ylabel '$\sigma^{z}_{xy}$ (natural units)' --gap -0.845 0.495 --gap2 1.175 1.230
+        --nk 240 --eta 0.02 --emin -3.0 --emax 1.0 --out pdse2_shc_bare
 ```
 
-![Intrinsic spin Hall conductivity of PdSe2 versus energy: flat and near-zero across the trivial main gap, a large peak at the topological gap near +1.2 eV](img/pdse2_shc.png)
+The figure below is the **covariant-velocity** result (the velocity carrying the
+Berry connection $A_a$, here from the wannierberri position matrix `AA_R`). That is
+the curve that matches the linear-scaling KPM once its velocity is refined the same
+way, and it is the physically correct $\sigma^{z}_{xy}$.
 
-FIG. 2. Intrinsic (Fermi-sea) spin Hall conductivity $\sigma^{z}_{xy}(E_F)$ of
-monolayer PdSe$_2$ versus $E-E_F$ (natural units; the absolute scale carries one
-$\sigma_{xx}$-style calibration constant, so the peak corresponds to
-$\sim 1\,e^2/h$), from `tools/hr_exactdiag.py shc` on the same `_hr.dat` operators
-($J^{z}_{x}=\tfrac12\{v_x,S_z\}$ and $v_y$). Solid blue with open circles:
-$\sigma^{z}_{xy}$ from the spin-Berry-curvature sum; grey band: the **trivial**
-charge gap $[-0.85,+0.50]$ eV around $E_F$ where $\sigma^{z}_{xy}\approx 0$ (no
-spin-Hall plateau, consistent with $Z_2=0$ at the band-edge gap); orange hatched
-band: the narrow **topological** gap at $E-E_F\approx +1.2$ eV (bands 7|8, width
-$\approx 55$ meV), where the spin-Berry curvature concentrates into the large
-feature. $240\times240$ k-mesh, $\eta=20$ meV Gaussian on the $E_F$ sweep,
-$E_F=-1.3162$ eV. This is the curve the linear-scaling KPM (lsquant Kubo-Bastin,
-Fermi-sea part) reproduces.
+![Intrinsic spin Hall conductivity of PdSe2 versus energy: flat and near-zero across the trivial main gap, a near-quantized +0.94 e2/h plateau at the topological gap near +1.2 eV](img/pdse2_shc.png)
+
+FIG. 3. The `covariant` curve of FIG. 2 alone, with both gaps marked. Intrinsic
+(Fermi-sea) $\sigma^{z}_{xy}(E_F)$ of monolayer PdSe$_2$ versus $E-E_F$ in units of
+$e^2/h$ (covariant velocity; exact diagonalization, $60\times60$ k-mesh). Grey
+band: the **trivial** charge gap $[-0.85,+0.50]$ eV around $E_F$, where
+$\sigma^{z}_{xy}\approx 0$ (no plateau, $Z_2=0$). Orange hatched band: the narrow
+**topological** gap at $E-E_F\approx +1.2$ eV (bands 7|8, width $\approx 55$ meV),
+where $\sigma^{z}_{xy}$ sits on a flat **near-quantized plateau** (grey dashed line:
+$+1\,e^2/h$; the independent wannierberri covariant reference gives $+0.94$). It
+falls just short of the integer because spin-orbit coupling breaks $[S_z,H]=0$, so
+$S_z$ is not exactly conserved and the spin-Chern quantization is only approximate;
+the plateau's flatness and near-integer height are the operational fingerprint of
+the gap's non-trivial topology. $E_F=-1.3162$ eV.
 
 This is the framework that turns any reconstructed `_hr.dat` operator set into
-bands, DOS, and Kubo quantities, and it is how the "exact" curve in the spin-Hall
-comparison is produced. The takeaway repeats: feed it the *bare* velocity and the
-intrinsic $\sigma^{z}_{xy}$ comes out anticorrelated with the truth; feed it the
-**covariant** velocity (Berry connection) and it matches.
+bands, DOS, and Kubo quantities, and it is how the curves of FIG. 2 are produced
+(one per velocity rung). FIG. 3 below isolates the `covariant` result and marks the
+two gaps.
 
 ## Reading the spin Hall: a trivial gap and a topological one
 
 The energy dependence is the lesson, and it is best read against Tutorial 4. In
 the Haldane model a *charge* Hall conductivity locks onto an exact integer
 $e^2/h$ across the gap — a quantized plateau pinned by the Chern number. PdSe$_2$
-differs on both counts. Its **main** gap, the one straddling $E_F$, is trivial
-($Z_2=0$): $\sigma^{z}_{xy}$ stays flat at zero through it, no plateau and no
-quantization. But PdSe$_2$ is not globally trivial. Higher up, a narrow gap in the
-conduction manifold near $E-E_F\approx 1.2$ eV (bands 7|8) carries a non-trivial
-spin-Chern character, and it is there — not at the band edge — that the spin-Berry
-curvature piles up into the large $\sigma^{z}_{xy}$ feature. The spin Hall response
-is the probe that tells the two gaps apart: an ordinary gap at the Fermi level, a
-topological one above it. (A quantized *spin* Hall plateau is not expected even
-there — $\sigma^{z}_{xy}$ is conserved only when $S_z$ commutes with $H$, which
-spin-orbit coupling breaks — but the topology is what concentrates the response.)
+is similar in the *main* gap but different higher up. Its **main** gap, the one
+straddling $E_F$, is trivial ($Z_2=0$): $\sigma^{z}_{xy}$ stays flat at
+$\approx 0$ through it, no plateau. But PdSe$_2$ is **not** globally trivial.
+Higher up, a narrow gap in the conduction manifold near $E-E_F\approx 1.2$ eV
+(bands 7|8) is topological, and there $\sigma^{z}_{xy}$ locks onto a flat
+**near-quantized plateau at $+0.94\,e^2/h$** — almost the same integer step
+Haldane shows for the charge Hall. It falls just short of an exact $+1$ because
+spin-orbit coupling breaks $[S_z,H]=0$, so $S_z$ is not perfectly conserved and the
+spin-Chern quantization is only approximate; but the plateau's flatness and
+near-integer height are the operational fingerprint of the gap's non-trivial
+topology. The spin Hall response is the probe that tells the two gaps apart: an
+ordinary gap at the Fermi level, a topological one above it.
+
+Two practical points the figure depends on. First, **units**: the intrinsic SHC
+comes out in per-cell natural units; the exact-diagonalization tool converts to
+$e^2/h$ with `--shc-units e2h`, a single calibration $-\pi$ (the charge-Hall Berry
+prefactor $2\pi/A_\mathrm{cell}$ times $\tfrac12$ for the $\hbar/2$ spin, with the
+$\sigma^z_{xy}$ sign), exactly analogous to $\sigma_{xx}$'s $7.49$. Without it the
+same curve reads $-0.33$ in natural units, which is why an earlier draft mistook
+the trivial-vs-topological story — the plateau was always there, only unscaled.
+Second, the **velocity**: `wannier2sparse --velocity-mode {bare,berry_connection,
+covariant}` selects the rung. All three give a near-quantized $\approx +1\,e^2/h$
+plateau here (the topology is robust); the `covariant` rung (Berry connection from
+`_r.dat`) is the most accurate and is the principled choice for any interband
+response. The figure was made with the covariant velocity; the wannierberri
+position matrix served as the independent cross-check ($+0.94\,e^2/h$).

@@ -74,7 +74,8 @@ void input_file_create(const std::string& path)
 "spin_current =                # repeatable; \"Vdir Sdir\", e.g.  X Z   (1/2{V,S}, CSR anticommutator)\n"
 "exact_spin   = false          # gauge-route spin from .spn + _u.mat (SOC/noncollinear)\n"
 "orbital_L    = false          # orbital angular momentum from .amn + _u.mat\n"
-"covariant_velocity = false    # Berry-connection velocity (needs _r.dat; NOT yet implemented, see docs/operators.md)\n"
+"velocity_mode = berry_connection # velocity ladder: bare | berry_connection (default) | covariant\n"
+"r_dat        =                # position matrix _r.dat for velocity_mode=covariant (default <seed>_r.dat)\n"
 "bounds       = false          # write .desc spectral-bound sidecars\n"
 "check        =                # self-checks: all|hermiticity|sum_rules|algebra|aliasing|bounds\n"
 "op_file      =                # repeatable; \"NAME PATH\" external _hr.dat operator (e.g. JXSZ model_JXSZ_hr.dat)\n";
@@ -160,7 +161,18 @@ void input_file_apply(const std::string& path, W2SP_arguments& args)
         }
         else if (key == "exact_spin")          args.exact_spin = as_bool(val);
         else if (key == "orbital_L" || key == "orbital_l") args.orbital_l = as_bool(val);
-        else if (key == "covariant_velocity")  args.covariant_velocity = as_bool(val);
+        else if (key == "covariant_velocity")  { if (as_bool(val)) { args.velocity_mode = "covariant"; args.covariant_velocity = true; } }
+        else if (key == "velocity_mode")
+        {
+            if (!val.empty())
+            {
+                if (val != "bare" && val != "berry_connection" && val != "covariant")
+                    throw std::runtime_error("input file: velocity_mode must be bare|berry_connection|covariant, got '" + val + "'");
+                args.velocity_mode = val;
+                args.covariant_velocity = (val == "covariant");
+            }
+        }
+        else if (key == "r_dat")               { if (!val.empty()) args.r_dat_path = val; }
         else if (key == "bounds")              args.emit_descriptor = as_bool(val);
         else if (key == "check")               { if (!val.empty()) args.check = val; }
         else throw std::runtime_error("input file: unknown key '" + key + "' in " + path);
@@ -184,6 +196,7 @@ void input_file_write_output(const std::string& outpath, const W2SP_arguments& a
     f << "output_dir   = " << args.output_dir << "\n";
     f << "exact_spin   = " << (args.exact_spin ? "true" : "false") << "\n";
     f << "orbital_L    = " << (args.orbital_l ? "true" : "false") << "\n";
+    f << "velocity_mode = " << args.velocity_mode << "\n";
     f << "bounds       = " << (args.emit_descriptor ? "true" : "false") << "\n";
     f << "operators    =";
     for (const auto& o : args.operators) f << " " << o;

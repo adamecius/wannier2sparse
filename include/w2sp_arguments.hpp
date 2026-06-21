@@ -67,7 +67,16 @@ public:
     std::vector<std::string> write_tokens;    ///< tokens after --write (option [value...])
     std::string              run_path;        ///< --run <input-file>
     std::string              inp_path;        ///< -inp/--inp <input-file> (create/write target)
-    bool                     covariant_velocity; ///< covariant-velocity option (recorded; run errors)
+    bool                     covariant_velocity; ///< legacy flag == (velocity_mode == "covariant")
+    /**
+     * @brief Velocity construction mode (the velocity ladder), applied to VX/VY/VZ
+     *        and to the velocity inside any spin current J=1/2{V,S}:
+     *   - "bare"            : v = -i(R.lat)H            (pure gradient, no positions)
+     *   - "berry_connection": v = -i(R.lat + dr_ij)H    (adds Wannier centres; default)
+     *   - "covariant"       : v = -i(R.lat)H - i[H,A]   (full Berry connection from _r.dat)
+     */
+    std::string              velocity_mode;
+    std::string              r_dat_path;      ///< override path to the position matrix _r.dat
 
     /**
      * @brief Default constructor.
@@ -77,7 +86,8 @@ public:
           exact_spin(false), orbital_l(false), mode("sparse"),
           has_truncation(false), truncation_threshold(0.0),
           program_name("wannier2sparse"),
-          do_create(false), do_write(false), covariant_velocity(false) {}
+          do_create(false), do_write(false), covariant_velocity(false),
+          velocity_mode("berry_connection") {}
 
     /**
      * @brief Resolved input file stem: <project_dir>/<seed>.
@@ -235,6 +245,20 @@ public:
             }
             else if (a == "--bounds")              { emit_descriptor = true; }
             else if (a == "--exact-spin")          { exact_spin = true; }
+            else if (a == "--covariant-velocity")  { velocity_mode = "covariant"; covariant_velocity = true; }
+            else if (a == "--velocity-mode")
+            {
+                if (i + 1 >= argc) { error("'--velocity-mode' needs bare|berry_connection|covariant"); return EXIT_ERROR; }
+                velocity_mode = argv[++i];
+                if (velocity_mode != "bare" && velocity_mode != "berry_connection" && velocity_mode != "covariant")
+                    { error("unknown --velocity-mode '" + velocity_mode + "' (use bare|berry_connection|covariant)"); return EXIT_ERROR; }
+                covariant_velocity = (velocity_mode == "covariant");
+            }
+            else if (a == "--r-dat")
+            {
+                if (i + 1 >= argc) { error("'--r-dat' needs a path to the _r.dat position matrix"); return EXIT_ERROR; }
+                r_dat_path = argv[++i];
+            }
             else if (a == "--orbital-l" || a == "--orbital-L") { orbital_l = true; }
             else if (a == "--check")
             {
@@ -375,6 +399,14 @@ private:
 "      --exact-spin       Build the exact spin operators SXexact/SYexact/SZexact\n"
 "                         from <seed>.spn + <seed>_u.mat (+ _u_dis.mat) via the\n"
 "                         gauge transform (units hbar/2). Requires those files.\n"
+"      --velocity-mode M  Velocity ladder for VX/VY/VZ and J=1/2{V,S}: 'bare'\n"
+"                         (-i(R.lat)H), 'berry_connection' (default; adds Wannier\n"
+"                         centres) or 'covariant' (-i(R.lat)H - i[H,A], full Berry\n"
+"                         connection; needs <seed>_r.dat). Interband responses\n"
+"                         (anomalous/spin Hall) want 'covariant'.\n"
+"      --covariant-velocity  alias for --velocity-mode covariant.\n"
+"      --r-dat PATH       Position matrix _r.dat (Wannier90 write_rmn) for the\n"
+"                         covariant velocity. Default <seed>_r.dat.\n"
 "      --orbital-L        Build orbital angular momentum LX/LY/LZ from <seed>.amn\n"
 "                         + <seed>_u.mat + <seed>.win projections (units hbar).\n"
 "                         Pure p/d shells only; errors on hybrids (e.g. sp3d2).\n"
