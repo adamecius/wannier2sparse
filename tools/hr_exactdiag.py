@@ -69,6 +69,71 @@ def read_uc(path):
         return np.eye(3)
 
 
+def read_wsvec(path):
+    """Wannier90 `_wsvec.dat` -> {(Rx,Ry,Rz,i,j): [(tx,ty,tz), ...]} (0-based i,j).
+
+    Each record is `Rx Ry Rz i j` then a count nT then nT minimum-image translations.
+    Mirrors src/wannier_parser.cpp::read_wsvec.
+    """
+    toks = []
+    with open(path) as f:
+        for line in f:
+            if line.lstrip().startswith("#"):
+                continue
+            toks += line.split()
+    out, p = {}, 0
+    while p + 6 <= len(toks):
+        Rx, Ry, Rz, iw, jw = (int(toks[p + k]) for k in range(5))
+        nT = int(toks[p + 5]); p += 6
+        Ts = []
+        for _ in range(nT):
+            Ts.append((int(toks[p]), int(toks[p + 1]), int(toks[p + 2]))); p += 3
+        out[(Rx, Ry, Rz, iw - 1, jw - 1)] = Ts
+    return out
+
+
+def apply_wsvec(iR, O, wsvec):
+    """Fold the Wigner-Seitz minimum-image correction into (iR, O).
+
+    Replaces each H(R)_{ij} by H(R+T)_{ij}/nT for the nT translations listed for
+    (R,i,j), accumulating into the (expanded) R-set. Mirrors
+    src/hopping_list.cpp::apply_wsvec. Returns the new (iR, O); a no-op if wsvec is
+    empty. Pitfall: apply only to a *raw* `_hr.dat`; a bundle operator already has it
+    folded (ndegen=1, no `_wsvec.dat` beside it), so do not double-apply.
+    """
+    if not wsvec:
+        return iR, O
+    from collections import defaultdict
+    nw = O.shape[1]
+    acc = defaultdict(lambda: np.zeros((nw, nw), complex))
+    for r, R in enumerate(iR):
+        Rt = (int(R[0]), int(R[1]), int(R[2]))
+        for i in range(nw):
+            for j in range(nw):
+                v = O[r, i, j]
+                if v == 0:
+                    continue
+                Ts = wsvec.get((Rt[0], Rt[1], Rt[2], i, j))
+                if not Ts:
+                    acc[Rt][i, j] += v
+                else:
+                    for (tx, ty, tz) in Ts:
+                        acc[(Rt[0] + tx, Rt[1] + ty, Rt[2] + tz)][i, j] += v / len(Ts)
+    newR = sorted(acc.keys())
+    return np.array(newR), np.array([acc[R] for R in newR])
+
+
+def read_hr_ws(seed):
+    """Read <seed>_hr.dat and fold <seed>_wsvec.dat if present (the real workflow)."""
+    import os
+    iR, O = read_hr(f"{seed}_hr.dat")
+    wsf = f"{seed}_wsvec.dat"
+    if os.path.exists(wsf):
+        iR, O = apply_wsvec(iR, O, read_wsvec(wsf))
+        print(f"  applied Wigner-Seitz correction from {wsf}")
+    return iR, O
+
+
 def opk(iR, OR, kf):
     """O(k) = sum_R e^{+i2pi k.R} O(R) for k-points kf (nk,3)."""
     return np.einsum('kr,rij->kij', np.exp(2j * np.pi * (np.atleast_2d(kf) @ iR.T)), OR)
@@ -174,7 +239,7 @@ def build_kpath(lattice, nodes=DEFAULT_PATH, npts=None):
 
 # -------------------------------------------------------------------- subcommands
 def cmd_bands(a):
-    iR, H = read_hr(f"{a.seed}_hr.dat"); lat = read_uc(f"{a.seed}.uc")
+    iR, H = read_hr_ws(a.seed); lat = read_uc(f"{a.seed}.uc")
     w2s_path = a.w2s if a.w2s else f"{a.seed}.w2s"
     w2s_nodes = read_w2s_kpath(w2s_path)
     if a.kpath:                                      # explicit QE band path wins
@@ -198,7 +263,7 @@ def cmd_bands(a):
 
 
 def cmd_dos(a):
-    iR, H = read_hr(f"{a.seed}_hr.dat")
+    iR, H = read_hr_ws(a.seed)
     E, dos, _ = _spectral(iR, H, a.nk, a.eta, a.ngrid, a.emin, a.emax)
     json.dump({"energy_eV": E.tolist(), "dos": dos.tolist(),
                "meta": {"nk": a.nk, "eta_eV": a.eta, "integral": float(np.trapezoid(dos, E))}},

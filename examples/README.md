@@ -48,7 +48,7 @@ Each model is a short, self-contained tutorial; they build on one another:
 | # | Tutorial | Teaches |
 |---|---|---|
 | 1 | [`01_chain1d`](01_chain1d/) | the full pipeline: primitive $O_{ij}(R)$ to supercell CSR to KPM DOS; the input-file CLI; supercell size as the resolution dial |
-| 2 | [`02_graphene`](02_graphene/) | the exact-diagonalization cross-check (`hr_exactdiag`) as the oracle for the stochastic KPM |
+| 2 | [`02_graphene`](02_graphene/) | a real DFT $\to$ Wannier model: graphene's band structure and density of states from two $p_z$ Wannier functions |
 | 3 | [`03_cubic`](03_cubic/) | linear scaling and the $N^3$ resolution trade in 3D; `sparse` vs `bundle` output |
 | 4 | [`04_haldane`](04_haldane/) | complex hoppings and a gap; how $H(R)$ carries the ingredients of topology |
 | 5 | [`05_wannier_shc_pdse2`](05_wannier_shc_pdse2/) | a real SOC Wannier model end to end: operators, the spin current, and the intrinsic spin Hall conductivity |
