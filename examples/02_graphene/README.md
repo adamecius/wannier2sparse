@@ -39,9 +39,10 @@ turn on.
 ## Run it
 
 ```bash
-wannier2sparse -x graphene.w2s
 wannier2sparse --provenance graphene
-python3 make_bands_dos.py
+wannier2sparse -x graphene.w2s
+python3 ../../tools/hr_exactdiag.py bands graphene --ef -1.7683
+python3 ../w2s_dos.py graphene.HAM.CSR --mode dos-exact
 ```
 
 ![Graphene band structure along Gamma-M-K-Gamma beside its density of states, the two pi bands touching at the Dirac point K on the Fermi level where the DOS vanishes](../img/graphene_bands_dos.png)

@@ -1,9 +1,50 @@
 {
-  // Minimal Wannier run: expand the real DFT-derived H(R) in graphene_hr.dat into a
-  // 60x60x1 supercell and write graphene.HAM.CSR. The Wigner-Seitz minimum-image
-  // correction is applied automatically because graphene_wsvec.dat is present.
-  // N >= 17 is required by the minimum-image guard (the H(R) range is 8 in-plane).
   "label": "graphene",
   "mode": "sparse",
-  "supercell": [60, 60, 1]
+  "output_dir": ".",
+  "supercell": [
+    60,
+    60,
+    1
+  ],
+  "provenance": {
+    "win": "graphene.win",
+    "kpoint_path": {
+      "source": "win",
+      "nodes": [
+        {
+          "label": "G",
+          "k": [
+            0,
+            0,
+            0
+          ]
+        },
+        {
+          "label": "M",
+          "k": [
+            0.5,
+            0,
+            0
+          ]
+        },
+        {
+          "label": "K",
+          "k": [
+            0.3333333,
+            0.3333333,
+            0
+          ]
+        },
+        {
+          "label": "G",
+          "k": [
+            0,
+            0,
+            0
+          ]
+        }
+      ]
+    }
+  }
 }
