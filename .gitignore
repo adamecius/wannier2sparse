@@ -38,3 +38,7 @@ include/Version.h
 
 # Local-only reference PDFs (only the manifest agent_references.md is committed)
 agent_references/
+
+# Python bytecode cache
+__pycache__/
+*.pyc
