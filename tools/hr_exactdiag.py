@@ -88,19 +88,53 @@ def cell_area_2d(lat):
 
 
 # ------------------------------------------------------------------- k-path helper
-DEFAULT_PATH = [("G", (0, 0, 0)), ("X", (.5, 0, 0)), ("S", (.5, .5, 0)),
-                ("Y", (0, .5, 0)), ("G", (0, 0, 0)), ("S", (.5, .5, 0))]
+DEFAULT_PATH = [("G", (0, 0, 0), 400), ("X", (.5, 0, 0), 400), ("S", (.5, .5, 0), 400),
+                ("Y", (0, .5, 0), 400), ("G", (0, 0, 0), 400), ("S", (.5, .5, 0), 0)]
 
 
-def build_kpath(lattice, nodes=DEFAULT_PATH, npts=400):
-    """Return (kfrac (Nk,3), xdist (Nk,), tick_x, tick_lbl) on the reciprocal metric."""
+def read_qe_kpath(path):
+    """Parse a Quantum ESPRESSO `K_POINTS crystal_b` block into band-path nodes.
+
+    Returns [(label, (kx,ky,kz), nseg), ...] in fractional (crystal) coordinates,
+    where nseg is the number of points QE places from that node to the next. This is
+    the SAME high-symmetry path the DFT bands were computed on, so a Wannier band
+    structure built on it overlays the DFT bands point-for-point. The path is exactly
+    what provenance tracking should record (see README "Provenance tracking"), so the
+    comparison needs no separate input file once the model carries its provenance.
+
+    Pitfall: only the `crystal_b` (band) form is parsed; an explicit `crystal`/`tpiba`
+    list of individual k-points is not a band path and raises.
+    """
+    lines = open(path).read().splitlines()
+    for i, l in enumerate(lines):
+        s = l.strip().lower()
+        if s.startswith("k_points") and "crystal_b" in s:
+            n = int(lines[i + 1].split()[0])
+            nodes = []
+            for j in range(n):
+                parts = lines[i + 2 + j].replace("!", " ! ").split()
+                k = (float(parts[0]), float(parts[1]), float(parts[2]))
+                nseg = int(parts[3]) if len(parts) > 3 and parts[3].lstrip("-").isdigit() else 0
+                lbl = parts[parts.index("!") + 1] if "!" in parts else f"k{j}"
+                nodes.append((lbl, k, nseg))
+            return nodes
+    raise ValueError(f"no 'K_POINTS crystal_b' band path found in {path}")
+
+
+def build_kpath(lattice, nodes=DEFAULT_PATH, npts=None):
+    """Return (kfrac (Nk,3), xdist (Nk,), tick_x, tick_lbl) on the reciprocal metric.
+
+    Each node carries its own segment count (the QE per-segment npts); pass npts to
+    override them all with a uniform value.
+    """
     recip = 2 * np.pi * np.linalg.inv(lattice).T          # rows = b1,b2,b3 (1/Ang)
     labels = [n[0] for n in nodes]
     fr = [np.array(n[1], float) for n in nodes]
     kf, xd, tick_x = [], [], [0.0]
     x = 0.0
     for a in range(len(fr) - 1):
-        seg = np.linspace(0, 1, npts, endpoint=(a == len(fr) - 2))
+        m = npts if npts else max(2, nodes[a][2])
+        seg = np.linspace(0, 1, m, endpoint=(a == len(fr) - 2))
         d = (fr[a + 1] - fr[a])
         dcart = d @ recip
         seglen = np.linalg.norm(dcart)
@@ -113,7 +147,12 @@ def build_kpath(lattice, nodes=DEFAULT_PATH, npts=400):
 # -------------------------------------------------------------------- subcommands
 def cmd_bands(a):
     iR, H = read_hr(f"{a.seed}_hr.dat"); lat = read_uc(f"{a.seed}.uc")
-    kf, xd, tx, lbl = build_kpath(lat, npts=a.npts)
+    if a.kpath:                                      # use the DFT band path (same k-points)
+        nodes = read_qe_kpath(a.kpath)
+        kf, xd, tx, lbl = build_kpath(lat, nodes=nodes)
+        print(f"bands: using DFT k-path from {a.kpath} ({len(nodes)} nodes: {'-'.join(n[0] for n in nodes)})")
+    else:
+        kf, xd, tx, lbl = build_kpath(lat, npts=a.npts)
     Hk = opk(iR, H, kf); Hk = 0.5 * (Hk + np.conj(np.transpose(Hk, (0, 2, 1))))
     w = np.linalg.eigvalsh(Hk)                            # (Nk, nw)
     out = {"kdist": xd.tolist(), "bands": w.tolist(), "tick_x": tx.tolist(),
@@ -258,7 +297,8 @@ def _plot_bands(xd, w, tx, lbl, ef, out, title):
     for x in tx:
         ax.axvline(x, color="0.85", lw=0.6)
     ax.axhline(0, color="0.6", lw=0.6, ls=":")
-    ax.set_xticks(tx); ax.set_xticklabels([r"$\Gamma$" if l == "G" else l for l in lbl])
+    gam = lambda l: r"$\Gamma$" if l.upper() in ("G", "GAMMA", "GM") else l
+    ax.set_xticks(tx); ax.set_xticklabels([gam(l) for l in lbl])
     ax.set_xlim(xd[0], xd[-1]); ax.set_ylabel(r"$E-E_F$ (eV)")
     fig.tight_layout(); fig.savefig(out, dpi=200)
 
@@ -273,6 +313,9 @@ def main(argv=None):
         q.add_argument("--emin", type=float, default=-3.5); q.add_argument("--emax", type=float, default=1.5)
     b = sub.add_parser("bands"); b.add_argument("seed"); b.add_argument("--out", default=None)
     b.add_argument("--npts", type=int, default=400); b.add_argument("--ef", type=float, default=0.0)
+    b.add_argument("--kpath", default=None, metavar="QE_BANDS_IN",
+                   help="QE 'K_POINTS crystal_b' file (e.g. qe/bands.in) — build the Wannier "
+                        "bands on the same k-path as the DFT, for a point-for-point overlay")
     b.add_argument("--no-plot", action="store_true"); b.set_defaults(fn=cmd_bands)
     d = sub.add_parser("dos"); common(d); d.set_defaults(fn=cmd_dos)
     s = sub.add_parser("sigma"); common(s); s.add_argument("--comp", default="xx", choices=["xx", "xy"]); s.set_defaults(fn=cmd_sigma)

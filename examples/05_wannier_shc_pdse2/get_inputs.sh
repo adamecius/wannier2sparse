@@ -40,5 +40,17 @@ wannier90.x ${SEED}
 N="${1:-50}"
 "$W2SP" ${SEED} "$N" "$N" 1 VX VY --exact-spin --spin-current X Z -o out
 echo "done -> out/${SEED}.{HAM,VX,VY,SXexact,SYexact,SZexact,JXSZ}.CSR"
-echo "exact reference (no supercell): ../../tools/hr_exactdiag.py shc ${SEED} \\"
-echo "      --jop ${SEED}_JXSZ_hr.dat --vop ${SEED}_vy_hr.dat"
+
+# 6. Figures (exact-diagonalization reference; needs the operator _hr.dat files).
+#    Bands on the SAME k-path the DFT used (from qe/bands.in); SHC + DOS; then one
+#    combined figure (FIG. 1 and FIG. 3 of the tutorial).
+ED=../../tools/hr_exactdiag.py
+EF=-1.3162
+python3 $ED bands ${SEED} --kpath qe/bands.in --ef $EF --out img/pdse2_bands
+python3 $ED shc   ${SEED} --jop ${SEED}_JXSZ_hr.dat --vop ${SEED}_vy_hr.dat \
+        --shc-units e2h --nk 300 --eta 0.006 --ngrid 1200 --emin -3.0 --emax 1.0 --out pdse2_shc
+python3 $ED dos   ${SEED} --nk 300 --eta 0.006 --ngrid 1200 --emin -3.0 --emax 1.0 --out pdse2_dos
+python3 ../plot_hall.py pdse2_shc.json --dos pdse2_dos.json --ef $EF \
+        --gap -0.05 0.05 --gap2 1.175 1.230 --plateau \
+        --ylabel '$\sigma^z_{xy}\;[e^2/h]$' --out img/pdse2_shc_dos.png
+echo "figures -> img/pdse2_bands.png, img/pdse2_shc_dos.png"

@@ -47,7 +47,11 @@ FIG. 1. Wannier band structure of monolayer PdSe$_2$ (12 spinor Wannier
 functions, relativistic PBE + SOC) along $\Gamma$-X-S-Y-$\Gamma$-S, $E$ relative
 to $E_F=-1.3162$ eV. A clean gap surrounds $E_F$; the intrinsic $\sigma^{z}_{xy}$
 peaks near the conduction-band near-degeneracy at $E-E_F\approx 1.2$ eV.
-Reconstructed from `pdse2_proj_hr.dat` by `tools/hr_exactdiag.py bands`.
+Reconstructed from `pdse2_proj_hr.dat` by `tools/hr_exactdiag.py bands --kpath
+qe/bands.in`, i.e. on the **same high-symmetry path the DFT used**: that path is part
+of the model's provenance (the QE band input), so the Wannier bands here overlay the
+DFT bands point-for-point, the standard check that the Wannier model reproduces the
+DFT band structure in the energy window of interest.
 
 ## Pre-run: from Quantum ESPRESSO to the operators
 
@@ -191,47 +195,53 @@ the *same* operators. `tools/hr_exactdiag.py` reconstructs $H(\mathbf{k})$ and
 $O(\mathbf{k})$ and diagonalizes densely on a k-mesh, with no supercell:
 
 ```bash
-../../tools/hr_exactdiag.py bands pdse2_proj --ef -1.3162   # FIG. 1
-../../tools/hr_exactdiag.py dos   pdse2_proj                # DOS, integral = num_wann
-# intrinsic sigma^z_xy in e^2/h. The covariant spin current (Jop) and v_y come from
-# a `velocity_mode: covariant` run; --shc-units e2h applies the -pi factor.
-# Use eta << the 55 meV topological gap and a dense k-mesh so the plateau is FLAT,
-# not a broadening-smeared peak (see FIG. 3):
+# Wannier bands on the SAME k-path the DFT used. The path is recorded in the model's
+# provenance (the QE band input it was made with), so no separate file is needed once
+# the model carries it; here we point at the committed qe/bands.in directly.
+../../tools/hr_exactdiag.py bands pdse2_proj --kpath qe/bands.in --ef -1.3162   # FIG. 1
+
+# The spin Hall and the density of states over the full window (both gaps). Use
+# eta << the 55 meV topological gap and a dense k-mesh so the plateau is FLAT.
+# The covariant spin current (Jop) and v_y come from a `velocity_mode: covariant` run.
 ../../tools/hr_exactdiag.py shc pdse2_proj \
         --jop pdse2_proj_JXSZ_hr.dat --vop pdse2_proj_vy_hr.dat \
-        --shc-units e2h --nk 300 --eta 0.006 --ngrid 1200 \
-        --emin -3.0 --emax 1.0 --out pdse2_shc
+        --shc-units e2h --nk 300 --eta 0.006 --ngrid 1200 --emin -3.0 --emax 1.0 --out pdse2_shc
+../../tools/hr_exactdiag.py dos pdse2_proj \
+        --nk 300 --eta 0.006 --ngrid 1200 --emin -3.0 --emax 1.0 --out pdse2_dos
+
+# One figure: sigma^z_xy and the DOS on a shared energy axis, both gaps marked.
+../plot_hall.py pdse2_shc.json --dos pdse2_dos.json --ef -1.3162 \
+        --gap -0.05 0.05 --gap2 1.175 1.230 --plateau \
+        --ylabel '$\sigma^z_{xy}\;[e^2/h]$' --out img/pdse2_shc_dos.png
 ```
 
-The figure below is the **covariant-velocity** result. Resolution matters: the
-topological gap is only $\approx 55$ meV, so at a coarse broadening ($\eta=20$ meV)
-the cumulative $\sigma^{z}_{xy}$ never flattens and the plateau reads as a peak;
-with $\eta=6$ meV on a $300\times300$ mesh it is a genuine flat plateau.
+The single figure below tells the whole story. The conductivity (a) is flat at
+$\approx 0$ across the **trivial** Fermi-level gap (grey) and locks onto a flat,
+near-integer **plateau** at $\approx +1\,e^2/h$ across the **topological** gap
+(hatched); the density of states (b) drops to zero in *both* gaps, so the contrast
+is purely topological, not a difference in the spectrum. Resolution matters: the
+topological gap is only $\approx 55$ meV, so the plateau is a genuine flat step only
+when $\eta=6$ meV $\ll 55$ meV on a dense ($300\times300$) mesh; at $\eta=20$ meV the
+band edges bleed in and it reads as a peak.
 
-![Zoom on the topological gap of PdSe2: the covariant spin Hall conductivity is a flat plateau at +1.09 e2/h across the 55 meV gap](img/pdse2_shc.png)
+![Spin Hall conductivity and density of states of PdSe2 on one shared energy axis: sigma is zero in the trivial Fermi-level gap and a flat plateau near plus one in the topological gap, while the DOS vanishes in both gaps](img/pdse2_shc_dos.png)
 
-FIG. 3. Zoom on the topological gap, where the plateau is resolved. Intrinsic
-(Fermi-sea) $\sigma^{z}_{xy}(E_F)$ of monolayer PdSe$_2$ (covariant velocity) in
-units of $e^2/h$ versus $E-E_F$ around the conduction-manifold gap. Orange hatched
-band: the **topological** gap at $E-E_F\in[1.175,1.230]$ eV (bands 7|8, width
-$\approx 55$ meV); blue bar: the **flat plateau** across it; grey dashed line:
-$+1\,e^2/h$. As the Fermi level sweeps the gap no states are added, so the
-cumulative $\sigma^{z}_{xy}$ is constant — a genuine plateau at $+1.09\,e^2/h$
-(standard deviation $0.007$ over the 17 grid points inside the gap). Resolving it
-requires a broadening below the gap width: exact diagonalization on a
-$300\times300$ k-mesh with $\eta=6$ meV $\ll 55$ meV (at the earlier $\eta=20$ meV
-the band edges bled into the gap and the plateau looked like a peak). It sits just
-above the integer because spin-orbit coupling breaks $[S_z,H]=0$, so $S_z$ is not
-exactly conserved and the spin-Chern quantization is only approximate (the
-independent wannierberri covariant reference gives $+0.94$); the flatness and
-near-integer height are the operational fingerprint of the gap's topology. The
-*trivial* Fermi-level gap (FIG. 2, grey band) instead stays at $\approx 0$.
-$E_F=-1.3162$ eV.
+FIG. 3. Intrinsic spin Hall conductivity and density of states of monolayer
+PdSe$_2$ from exact diagonalization, on one shared energy axis $E-E_F$ (eV),
+$E_F=-1.3162$ eV. (a) $\sigma^{z}_{xy}(E_F)$ in $e^2/h$ (solid blue, open circles);
+grey band: the trivial Fermi-level gap ($\sigma\approx 0$); orange hatched band: the
+topological gap $E-E_F\in[1.175,1.230]$ eV (bands 7|8, $\approx 55$ meV); dashed
+orange: the mean across it, a flat plateau at $\approx +1\,e^2/h$. (b) the density
+of states $\rho(E)$ [eV$^{-1}$] (solid green, filled), which vanishes in both shaded
+gaps. The plateau sits just above the integer because spin-orbit coupling breaks
+$[S_z,H]=0$, so the spin-Chern quantization is only approximate (the independent
+wannierberri covariant reference gives $+0.94$). Covariant velocity; Fermi-sea
+(intrinsic) Kubo on a $300\times300$ k-mesh with $\eta=6$ meV.
 
-This is the framework that turns any reconstructed `_hr.dat` operator set into
-bands, DOS, and Kubo quantities, and it is how the curves of FIG. 2 are produced
-(one per velocity rung). FIG. 3 below isolates the `covariant` result and marks the
-two gaps.
+This framework turns any reconstructed `_hr.dat` operator set into bands, DOS, and
+Kubo quantities. FIG. 2 above shows the three velocity rungs all land on the same
+plateau; FIG. 3 puts the conductivity and the density of states side by side so the
+trivial-versus-topological contrast is visible at a glance.
 
 ## Reading the spin Hall: a trivial gap and a topological one
 

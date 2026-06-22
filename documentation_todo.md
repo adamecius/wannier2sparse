@@ -50,6 +50,9 @@ your OK · **[CODE]** = needs the follow-up code PR · **[DOING]** = doc work st
 - the **pseudopotentials**
 - the **non-default input settings** (cutoffs, k-mesh, spin-orbit, smearing, …
   — i.e. anything that differs from QE's defaults)
+- the **band k-path** (the `K_POINTS crystal_b` high-symmetry path used for the
+  bands) — so the Wannier bands can be drawn on the same k-points as the DFT
+  (`hr_exactdiag.py bands --kpath` already reads this from a QE `bands.in`).
 
 This replaces my earlier enumerated list. The follow-up `--provenance` code extracts
 exactly these. Implementation note: "non-default" means diffing the parsed input
@@ -92,6 +95,24 @@ keys that were explicitly set — I'll pick the simplest robust route when codin
     (2006), [arXiv:cond-mat/0608257]).
 
 ---
+
+## E2. PdSe2 figures to regenerate (combined SHC+DOS, DFT-path bands)
+
+The PdSe2 model is DFT-derived and not committed, so I could not render its PNGs
+here. The tooling is done and **verified on the committed Haldane model** (combined
+σ+DOS figure renders correctly). On a machine with the DFT data, regenerate with
+`bash get_inputs.sh 50` (the figure steps are appended to it):
+
+- **[NEEDS YOU] `img/pdse2_shc_dos.png`** — the new combined figure (FIG. 3): σ^z_xy
+  and the DOS on one shared energy axis, trivial gap (grey) + topological plateau
+  (hatched) + DOS. The tutorial references it; it is not yet rendered in the repo.
+- **[NEEDS YOU] `img/pdse2_bands.png`** — rerun on the DFT k-path
+  (`--kpath qe/bands.in`); optionally overlay the QE bands for the DFT-vs-Wannier
+  comparison the caption describes.
+- Once `pdse2_shc_dos.png` exists, the old **`img/pdse2_shc.png`** (the zoom, now
+  superseded) can be deleted; I left it in place to avoid a dangling reference.
+- The exact trivial-gap window in the plot command (`--gap -0.05 0.05`) is a
+  placeholder; set it to the real Fermi-level gap edges.
 
 ## F. Housekeeping
 

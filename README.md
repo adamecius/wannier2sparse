@@ -124,9 +124,12 @@ From a **Wannier90** run it keeps the *basis* — the projections that define th
 Wannier functions — and the on-disk locations of the Wannier matrices
 (`_hr.dat`, `_u.mat`, `_r.dat`, `.spn`). From a **Quantum ESPRESSO** run it keeps
 what reproduces the DFT calculation: the final structure (lattice and atoms), the
-pseudopotentials, and the non-default input settings (cutoffs, $k$-mesh, spin-orbit,
-… — whatever differs from the defaults). These go into the `.w2s` (`-ws2 NAME`
-chooses the file) and travel with every output the model produces.
+pseudopotentials, the non-default input settings (cutoffs, $k$-mesh, spin-orbit,
+… — whatever differs from the defaults), and the band $k$-path (the high-symmetry
+path used for the band structure). These go into the `.w2s` (`-ws2 NAME` chooses the
+file) and travel with every output the model produces. Recording the band path is
+what lets a tool like [`hr_exactdiag.py`](tools/hr_exactdiag.py) draw the Wannier
+bands on exactly the $k$-points the DFT used, for a point-for-point comparison.
 
 <!-- TODO[3]: this section + `-x` and `VXSZ`-as-anticommutator describe the planned CLI;
      they require the follow-up code PR before this README is merged to master. -->
