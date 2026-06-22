@@ -4,3 +4,10 @@ models/wannier/
 *.CSR
 __pycache__/
 *.pyc
+# Per-run artifacts written next to a committed input file (.w2s); the inputs
+# stay tracked, the receipts/logs/expanded-operator bundles do not.
+*.out
+*.run.log
+*.HAM.check
+*.HAM.desc
+*.w2sp/

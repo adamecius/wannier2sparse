@@ -1,134 +1,147 @@
-# Tutorial 2: how do we know the smooth DOS curve is the real one?
+# Tutorial 2: what is the minimal input for a real Wannier calculation?
 
-Graphene has two carbon atoms per cell, yet its two bands touch at a single point
-and the density of states drops smoothly to zero there. Run the Kernel Polynomial
-Method (KPM) on a finite supercell and you get a clean curve with a dip at zero
-energy and two sharp peaks. It looks right. But KPM is stochastic: it probes the
-spectrum with a handful of random vectors and a truncated polynomial expansion, so
-the curve is an estimate, not the spectrum itself. How do we know it is faithful to
-the model and not an artifact of the random seed or the moment count?
+Tutorial 1 built a chain by hand: a single `_hr.dat` with every Wigner-Seitz
+degeneracy `ndegen = 1`, the hoppings written in by fiat. A real model from density
+functional theory plus Wannier90 is not like that. Its `_hr.dat` carries genuine
+Wigner-Seitz degeneracies (`ndegen > 1`), and Wannier90 ships a companion
+`_wsvec.dat` recording the minimum-image lattice vectors. This tutorial answers a
+single practical question: **what is the smallest set of files needed to take a real
+Wannier90 model to a density of states, and how does that set differ from the
+tight-binding minimum of tutorial 1?**
 
-We want the density of states of honeycomb graphene, and we want to trust it. The
-way to trust an approximation is to hold it against something exact. The same
-`_hr.dat` that feeds the supercell can be Fourier transformed back to $H(\mathbf{k})$
-and diagonalized densely on a $\mathbf{k}$-mesh, with no supercell and no random
-vectors. That dense reference is the oracle. The lesson here is that the exact
-diagonalization is the truth the stochastic KPM is measured against, and graphene
-is the perfect test because its features are sharp and analytic.
+The model is honeycomb graphene, but now from an actual Wannier90 run — the files in
+this directory are real Wannier90 output, not a hand-written toy. The lesson is that
+the minimal Wannier input is exactly the tight-binding minimum *plus one file*, the
+Wigner-Seitz `_wsvec.dat`, which the tool applies automatically to produce the
+operator downstream code expects.
 
-## The physics
+## The minimal Wannier input
 
-Graphene is a honeycomb lattice: two sublattices $A$ and $B$, one $p_z$ orbital
-each, nearest-neighbour hopping $t = -1$. The real-space model is a set of blocks
-$H(\mathbf{R})$, and the Bloch Hamiltonian is their phased sum,
+These files are committed here. Only the first two are needed for a density of
+states; the rest are provenance Wannier90 emits and the tool ignores for a DOS:
 
-$$ H(\mathbf{k}) = \sum_{\mathbf{R}} e^{i\mathbf{k}\cdot\mathbf{R}}\, H(\mathbf{R}). $$
+| File | Needed for a DOS? | What it holds |
+|------|-------------------|---------------|
+| [`graphene_hr.dat`](graphene_hr.dat) | **yes** | the real-space Hamiltonian $H(\mathbf{R})$ — 2 Wannier functions, 149 $\mathbf{R}$-points, **genuine `ndegen` up to 2** (the Wigner-Seitz degeneracies a DFT model carries). |
+| [`graphene.w2s`](graphene.w2s) | yes | the run description (label, `sparse` mode, supercell size) — input, not model data. |
+| [`graphene_wsvec.dat`](graphene_wsvec.dat) | **yes (correctness)** | the Wigner-Seitz minimum-image vectors (`use_ws_distance=.true.`). The tool **auto-detects** it from its name and folds the minimum-image correction into every operator. This is the one file a Wannier calculation adds over a tight-binding one. |
+| [`graphene.uc`](graphene.uc) | only for geometry | the lattice vectors; read only when an operator needs positions (velocity, $L$). A plain Hamiltonian DOS ignores it. |
+| [`graphene.xyz`](graphene.xyz) | only for geometry | the two Wannier centres; same — position-dependent operators only. |
+| `graphene.win`, `graphene.wout`, `graphene.eig`, `graphene_centres.xyz`, `graphene_band.*` | no | the Wannier90 run that produced the model: input, log, eigenvalues, centres, interpolated bands. Provenance, not DOS input. |
 
-With only off-diagonal $A$-$B$ hopping the two bands are $E_\pm(\mathbf{k}) = \pm\,t\,
-\lvert f(\mathbf{k})\rvert$, and the density of states follows in closed form: it
-vanishes linearly at the Dirac point, diverges logarithmically at the van Hove
-energies, and has hard band edges,
+So the **minimal Wannier set for a DOS is `graphene_hr.dat` + `graphene_wsvec.dat`**
+plus a run specification — verified: the tool runs on those two files alone, with no
+`.uc`/`.xyz` and no warnings. Set against tutorial 1's tight-binding minimum (a lone
+`_hr.dat`), a real Wannier calculation adds exactly the Wigner-Seitz file.
 
-$$ \rho(E) \xrightarrow{E\to 0} 0, \qquad \text{van Hove peaks at } E = \pm\lvert t\rvert,
-\qquad \text{edges at } E = \pm 3\lvert t\rvert. $$
+> A larger supercell guard applies here. The Wannier $H(\mathbf{R})$ reaches
+> $\lvert\mathbf{R}\rvert = 8$ in-plane, so the minimum-image guard requires
+> $N \ge 2\,\mathrm{range}+1 = 17$ per in-plane axis; smaller cells would alias
+> distinct bonds and the tool refuses them. The idealized tight-binding model of
+> Section 2 has range 1, so any $N$ works there.
 
-The conceptual result of this tutorial is that two routes start from the same
-$H(\mathbf{R})$ and must agree where both are valid. Dense diagonalization of
-$H(\mathbf{k})$ is exact: no supercell, no broadening you did not choose, no
-stochastic noise. KPM trades that exactness for linear scaling, since it needs only
-sparse matrix-vector products and never forms or diagonalizes a dense matrix. Where
-the exact curve is the oracle, the KPM curve is the candidate, and graphene's Dirac
-dip and van Hove peaks are sharp enough that any disagreement would show.
+## Section 1: the density of states of the minimal Wannier model
 
-![Graphene DOS vanishing linearly at the Dirac point with van Hove peaks at plus and minus the hopping](../img/graphene_dos.png)
-
-FIG. 1. Density of states $\rho(E)$ of honeycomb graphene from the supercell CSR.
-$\rho(E)$ vanishes at the Dirac point $E = 0$, with van Hove peaks at $E = \pm\lvert
-t\rvert$ and band edges $\pm 3\lvert t\rvert$ for $t = -1$. KPM reconstruction with
-$M = 2048$ Chebyshev moments, $R = 20$ stochastic vectors, Jackson kernel, on an
-$80\times80\times1$ supercell.
-
-## Step 1: build the honeycomb model
+A committed [`graphene.w2s`](graphene.w2s) describes the run (a $60\times60\times1$
+supercell); the Wigner-Seitz correction is applied automatically because
+`graphene_wsvec.dat` is present:
 
 ```bash
-bash run.sh graphene 80        # generates models/tb/graphene/ (and a first DOS plot)
-cd models/tb/graphene          # the rest of this tutorial runs from here
+wannier2sparse -x graphene.w2s        # logs "applying Wigner-Seitz correction" -> graphene.HAM.CSR
 ```
 
-This writes the primitive model `graphene_hr.dat` (the two-sublattice Hamiltonian
-$H(\mathbf{R})$), its lattice vectors `graphene.uc`, and its orbital positions
-`graphene.xyz`. The next steps read those same three files, once as the source of
-the supercell and once as the source of the exact reference.
-
-## Step 2: write the input file and run it
-
-The operator here is the Hamiltonian itself: `wannier2sparse` replicates every
-non-zero $H_{ij}(\mathbf{R})$ across the supercell and PBC-wraps it into one sparse
-matrix. Put
-
-```json
-{ "label": "graphene", "mode": "sparse", "supercell": [80, 80, 1] }
-```
-
-in `graphene.w2s` and run it:
+Reconstruct the DOS from the CSR, once with the `_wsvec.dat` present and once with it
+withheld, to see what the Wigner-Seitz file actually does. The figure script does
+both runs and the diagonalization:
 
 ```bash
-wannier2sparse -x graphene.w2s        # -> graphene.HAM.CSR
+python3 make_min_figs.py              # writes ../img/graphene_wannier_dos.png (and the TB panel below)
 ```
 
-## Step 3: the exact bands have no supercell and no noise
+![Density of states of the real Wannier graphene model, with the Wigner-Seitz correction on and off, with a zoom inset where they separate](../img/graphene_wannier_dos.png)
 
-`tools/hr_exactdiag.py` takes the opposite route on the same `graphene_hr.dat`: it
-rebuilds $H(\mathbf{k})$ and diagonalizes it densely along a $\mathbf{k}$-path.
+FIG. 1. Density of states $\rho(E)$ per site of the real DFT-derived Wannier graphene
+model (two Wannier functions, 149 $\mathbf{R}$-points, Wigner-Seitz degeneracies
+`ndegen` up to 2). Solid blue with open circles (WS on): the minimum-image correction
+from `graphene_wsvec.dat` applied — the correct minimal-Wannier result. Dashed orange
+with open squares (WS off): the same `graphene_hr.dat` with the `_wsvec.dat` withheld.
+The two curves nearly coincide; the inset zooms on the window of largest difference
+(near $E = -3.5$ eV), where they part by at most $\sim 0.004\ \mathrm{eV}^{-1}\,
+\mathrm{site}^{-1}$, within the finite-size ripple of the cell. Both curves are dense
+diagonalizations of the expanded supercell Hamiltonian, Gaussian-broadened with
+$\eta = 0.06$ eV, on a $60\times60\times1$ supercell (7200 states); energies are
+absolute DFT eigenvalues in eV.
+
+For this well-localized graphene model the Wigner-Seitz correction is a *small*
+perturbation on the integrated DOS — the two curves overlap within the finite-size
+ripple. That is the honest result, and it is worth stating plainly: the correction's
+real weight is on $\mathbf{k}$-resolved quantities (the interpolated band structure),
+not on the DOS. The file-set takeaway is independent of size: the tool applies the
+correction automatically whenever `_wsvec.dat` is present, so a real Wannier DOS is
+reproduced from `_hr.dat` + `_wsvec.dat`, and the corrected operator — not the raw
+`_hr.dat` — is what downstream transport code expects.
+
+## Section 2: the same lattice as a minimal tight-binding model
+
+The honeycomb lattice also has a textbook two-band tight-binding description: one
+$p_z$ orbital per sublattice, a single nearest-neighbour hopping $t = -1$, no
+long-range tails, every `ndegen = 1`, and no Wigner-Seitz file at all. That is the
+minimal tight-binding input of tutorial 1, applied to graphene — committed here as a
+separate seed (`graphene_tb_hr.dat`, with [`graphene_tb.w2s`](graphene_tb.w2s)) so the
+two file sets sit side by side. `graphene_tb_hr.dat` is the only file this DOS needs;
+`graphene_tb.uc`/`.xyz` are present only for completeness, no operator here uses them,
+and there is no `_wsvec.dat`:
 
 ```bash
-python3 ../../../../tools/hr_exactdiag.py bands graphene
+wannier2sparse -x graphene_tb.w2s     # -> graphene_tb.HAM.CSR
+# the tight-binding panel is produced by the same make_min_figs.py call as Section 1
 ```
 
-The two bands meet at the Dirac point and split to the band edges $\pm 3\lvert
-t\rvert$. There is no supercell folding and no random seed in this curve, so it is
-the analytic dispersion sampled as finely as the path, the reference the supercell
-spectrum must reproduce.
+![Density of states of the idealized two-band tight-binding graphene with the Dirac dip at zero and van Hove peaks at plus and minus the hopping](../img/graphene_tb_dos.png)
 
-## Step 4: the KPM density matches the exact mesh density
+FIG. 2. Density of states $\rho(E)$ per site of the idealized two-band tight-binding
+graphene (`graphene_tb_hr.dat` only: nearest-neighbour $t = -1$, every `ndegen = 1`,
+no `_wsvec.dat`). Dash-dotted green with open triangles: dense diagonalization of the
+expanded supercell Hamiltonian, Gaussian-broadened with $\eta = 0.04$. $\rho(E)$
+vanishes linearly at the Dirac point $E = 0$, with van Hove peaks at $E = \pm\lvert
+t\rvert$ and band edges $\pm 3\lvert t\rvert$, on a $60\times60\times1$ supercell
+(7200 states). Energies in units of $\lvert t\rvert$ (eV).
 
-The same tool computes the density of states on a dense $\mathbf{k}$-mesh, with only
-a Gaussian broadening you set explicitly.
-
-```bash
-python3 ../../../../tools/hr_exactdiag.py dos graphene
-```
-
-Overlay this exact mesh density on the KPM curve of FIG. 1 and they agree: the
-linear vanishing at $E = 0$, the van Hove peaks at $E = \pm\lvert t\rvert$, and the
-edges at $\pm 3\lvert t\rvert$ sit at the same energies. The exact density has no
-stochastic vectors and no Chebyshev truncation, so any KPM peak that landed at the
-wrong energy, or a Dirac dip that failed to reach zero, would stand out against it.
-The trap to avoid is reading the KPM curve as exact in its own right: its peak
-heights are set by the moment count $M$ and its smoothness by the vector count $R$,
-and only the comparison to the dense mesh tells you the broadening is resolution,
-not physics.
+The two figures are the same lattice through two different file sets. The Wannier
+model (FIG. 1) is a real DFT object: long-range hoppings, on-site energies at the DFT
+Fermi level, and a Wigner-Seitz file that the minimal set cannot drop. The
+tight-binding model (FIG. 2) is the analytic idealization: a single $_hr.dat$ with
+three numbers' worth of physics, the Dirac dip and van Hove peaks landing exactly
+where the closed form predicts.
 
 ## What to take away
 
-- Graphene's DOS vanishes linearly at the Dirac point $E = 0$, with van Hove peaks
-  at $E = \pm\lvert t\rvert$ and band edges $\pm 3\lvert t\rvert$ for $t = -1$.
-- The dense diagonalization of $H(\mathbf{k})$ is the oracle: no supercell, no
-  stochastic noise, exact up to the $\mathbf{k}$-sampling you choose.
-- KPM trades that exactness for linear scaling, using only sparse matrix-vector
-  products, and its broadening is a resolution dial set by the moment count, not a
-  physical width.
-- Both routes start from the same $H(\mathbf{R})$, so where they overlap they must
-  agree, and graphene's sharp features make the agreement a real test.
-
-The next tutorial reuses this exact-versus-KPM habit on a 3D band, where the
-supercell is small and the mesh comparison is what keeps the coarse density honest.
+- The **minimal input for a real Wannier DOS is `_hr.dat` + `_wsvec.dat`** plus a run
+  specification; `.uc`/`.xyz` are required only for position-dependent operators, and
+  the rest of the Wannier90 output is provenance the DOS does not need.
+- The **minimal tight-binding input is a single `_hr.dat`** (tutorial 1). A real
+  Wannier calculation differs by exactly one file, the Wigner-Seitz `_wsvec.dat`,
+  auto-detected and folded into every operator.
+- The `_wsvec.dat` is part of the minimal set because the tool applies it
+  automatically and the corrected operator is the intended one. Its effect on the
+  *DOS* of this well-localized model is small (FIG. 1, the curves overlap within the
+  finite-size ripple); it weighs much more on the interpolated band structure and
+  other $\mathbf{k}$-resolved quantities.
+- Both file sets run through the identical engine — replicate $H(\mathbf{R})$ across
+  the supercell, PBC-wrap, write a sparse CSR — and the supercell-size and KPM
+  resolution dials of tutorial 1 carry over unchanged.
 
 ## References and links
 
 - Graphene electronic properties: A. H. Castro Neto et al., Rev. Mod. Phys. 81,
   109 (2009), [arXiv:0709.1163](https://arxiv.org/abs/0709.1163).
 - wannier2sparse source and documentation: https://github.com/adamecius/wannier2sparse
-- Operator and gauge conventions: docs/conventions.md and docs/operators.md.
-- Wannier functions: N. Marzari et al., Rev. Mod. Phys. 84, 1419 (2012),
-  [arXiv:1112.5411](https://arxiv.org/abs/1112.5411).
+- The `.w2s` input file and the file set each operator needs: [docs/input_file.md](../../docs/input_file.md).
+- Operator and gauge conventions, including the Wigner-Seitz minimum image:
+  [docs/conventions.md](../../docs/conventions.md) and [docs/operators.md](../../docs/operators.md).
+- Wannier functions and the Wigner-Seitz interpolation: N. Marzari et al., Rev. Mod.
+  Phys. 84, 1419 (2012), [arXiv:1112.5411](https://arxiv.org/abs/1112.5411);
+  Wannier90: G. Pizzi et al., J. Phys. Condens. Matter 32, 165902 (2020),
+  [arXiv:1907.09788](https://arxiv.org/abs/1907.09788).
+</content>
+</invoke>
