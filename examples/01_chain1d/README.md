@@ -26,27 +26,31 @@ blocks with their phases,
 
 $$ H(k) = \sum_{R} e^{ikR}\, H(R) = t\,(e^{ik} + e^{-ik}) = 2t\cos k . $$
 
-For $t=-1$ the band runs over $E \in [-2, 2]$. The density of states follows from
-$\rho(E) = \tfrac{1}{\pi}\,|dk/dE|$, and because $dE/dk = -2t\sin k$ vanishes at
-the zone centre and edge, $\rho(E)$ carries the hallmark 1D van Hove signature,
+For $t=-1$ the band runs over $E \in [-2,2]$. The density of states is the number
+of $k$-states per unit energy. In 1D, with the Brillouin zone normalized to one
+state per site,
 
-$$ \rho(E) = \frac{1}{\pi\sqrt{4t^2 - E^2}} , $$
+$$ \rho(E) = \frac{1}{2\pi}\oint dk\,\delta\!\big(E-E(k)\big)
+           = \frac{1}{2\pi}\sum_{k:\,E(k)=E}\frac{1}{\lvert dE/dk\rvert} . $$
 
-an inverse-square-root divergence at each band edge $E = \pm 2|t|$. That closed
-form is the thing every later step is checked against.
+Each energy in the band is reached at two momenta $\pm k$. Using $dE/dk = -2t\sin k$
+and $\cos k = E/2t$,
 
-The conceptual result this tutorial turns on is simpler than the formula: the
-three blocks $H(R)$ are the entire model, and nothing the pipeline does adds
-physics to them. Expanding to a supercell only chooses how finely $k$ is sampled,
-and KPM only chooses how finely $E$ is resolved.
+$$ \lvert dE/dk\rvert = 2\lvert t\rvert\,\lvert\sin k\rvert
+   = 2\lvert t\rvert\sqrt{1-\cos^2 k} = \sqrt{4t^2 - E^2}, $$
 
-![A single cosine band whose density of states diverges as an inverse square root at both band edges](../img/chain1d_dos.png)
+so the two momenta together give the closed form
 
-FIG. 1. Density of states $\rho(E)$ of the 1D tight-binding chain. The
-characteristic 1D inverse-square-root van Hove divergences sit at the band edges
-$E = \pm 2|t|$ and the support is $[-2,2]$ for $t=-1$. KPM reconstruction with
-$M = 2048$ Chebyshev moments, $R = 20$ stochastic vectors, Jackson kernel, on a
-$400\times1\times1$ supercell.
+$$ \rho(E) = \frac{1}{\pi\sqrt{4t^2 - E^2}}, \qquad \lvert E\rvert < 2\lvert t\rvert . $$
+
+The group velocity $dE/dk$ vanishes at the band edges $E=\pm 2\lvert t\rvert$, so
+$\rho(E)$ diverges there as an inverse square root: the 1D van Hove singularities.
+This is the analytic target every numerical route below is checked against.
+
+The conceptual result this tutorial turns on is simpler than the formula: the three
+blocks $H(R)$ are the entire model, and nothing the pipeline does adds physics to
+them. Expanding to a supercell only chooses how finely $k$ is sampled, and KPM only
+chooses how finely $E$ is resolved.
 
 ## Step 1: build the chain as a primitive operator
 
@@ -109,7 +113,7 @@ python3 ../../../../tools/hr_exactdiag.py dos chain1d --emin -2.6 --emax 2.6 --o
 python3 ../../../w2s_dos.py chain1d.HAM.CSR --mode dos-exact --eta 0.025                               # route 3
 ```
 
-They coincide (FIG. 2). That is the central check: the supercell engine adds no
+They coincide (FIG. 1). That is the central check: the supercell engine adds no
 physics, the sparse matrix it writes carries the same spectrum as $H(k)$ and as the
 closed form.
 
@@ -131,7 +135,7 @@ python3 ../../../w2s_dos.py chain1d.HAM.CSR --mode compare --analytic chain1d \
 
 ![Density of states of the 1D chain from four routes that overlap: closed form, exact diagonalization of H(k), exact diagonalization of the sparse supercell matrix, and KPM](../img/chain1d_validation.png)
 
-FIG. 2. Density of states $\rho(E)$ per site of the 1D chain from four routes that
+FIG. 1. Density of states $\rho(E)$ per site of the 1D chain from four routes that
 agree: solid grey, the closed form $\rho=1/(\pi\sqrt{4t^2-E^2})$; dashed green,
 exact diagonalization of $H(k)$ on a dense $k$-mesh (no supercell); open blue
 circles, exact dense diagonalization of the expanded sparse supercell matrix;
