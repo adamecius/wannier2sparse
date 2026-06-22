@@ -79,47 +79,93 @@ The supercell engine replicates each primitive block $H(R)$ across $N$ cells and
 PBC-wraps it, turning the three-number model into one $N\times N$ sparse matrix
 whose eigenvalues are $2t\cos k$ sampled at the $N$ allowed momenta $k=2\pi n/N$.
 
-## Step 3: the supercell size is the resolution dial on the spectrum
+## Step 3: the band structure
 
-The expanded matrix samples the band at $N$ momenta, so $N$ sets how finely the
-spectrum is resolved. A small cell gives a coarse comb of levels; a large cell
-fills in the continuous band and lets the van Hove edges sharpen toward their
-divergence.
-
-```bash
-python3 ../../../w2s_dos.py chain1d.HAM.CSR --out chain1d_dos.png
-```
-
-KPM expands $\rho(E)$ in $M=2048$ Chebyshev moments using only sparse
-matrix-vector products, the same operation a LinQT transport calculation runs, so
-the curve in FIG. 1 scales to large $N$ without any dense diagonalization. Two
-knobs are physically distinct and easy to conflate: $N$ sets which energies exist
-(the sampling of $k$), while $M$ and the Jackson kernel set how sharply each is
-drawn (the broadening). Raising $M$ on too small an $N$ resolves a comb of spikes,
-not a band; the smooth curve needs both a large cell and enough moments.
-
-## Step 4: the closed form, checked by exact diagonalization
-
-For a model this small the band can be recovered exactly, with no supercell and no
-stochastic noise, by diagonalizing $H(k)$ densely on a $k$-grid:
+The expanded matrix is the band sampled at $N$ momenta, so its sorted spectrum
+*is* the dispersion $E(k)=2t\cos k$. The DOS tool
+[`w2s_dos.py`](../w2s_dos.py) plots it directly from the CSR:
 
 ```bash
-python3 ../../../../tools/hr_exactdiag.py bands chain1d
-python3 ../../../../tools/hr_exactdiag.py dos   chain1d
+python3 ../../../w2s_dos.py chain1d.HAM.CSR --mode spectrum --out chain1d_bands.png
 ```
 
-The `bands` subcommand traces $E = 2t\cos k$ directly, and `dos` reproduces the
-inverse-square-root density of FIG. 1. This is the oracle: the KPM curve from the
-supercell CSR and the dense-diagonalization curve from the same `_hr.dat` are two
-routes to one spectrum, and where they agree the pipeline has added no physics of
-its own.
+The supercell-free route is [`tools/hr_exactdiag.py`](../../tools/hr_exactdiag.py),
+which rebuilds $H(k)$ and diagonalizes it on a $k$-path (`hr_exactdiag.py bands
+chain1d`); for the chain both trace the same cosine.
+
+## Step 4: the density of states, three exact routes that must agree
+
+Before any approximation the DOS can be computed three independent ways, and they
+must land on one curve:
+
+1. the **closed form** $\rho(E)=1/(\pi\sqrt{4t^2-E^2})$;
+2. **exact diagonalization of $H(k)$ on the fly**, no supercell, with
+   [`tools/hr_exactdiag.py`](../../tools/hr_exactdiag.py);
+3. **exact (dense) diagonalization of the expanded sparse supercell matrix**, with
+   [`w2s_dos.py`](../w2s_dos.py).
+
+```bash
+python3 ../../../../tools/hr_exactdiag.py dos chain1d --emin -2.6 --emax 2.6 --out chain1d_ondemand   # route 2
+python3 ../../../w2s_dos.py chain1d.HAM.CSR --mode dos-exact --eta 0.025                               # route 3
+```
+
+They coincide (FIG. 2). That is the central check: the supercell engine adds no
+physics, the sparse matrix it writes carries the same spectrum as $H(k)$ and as the
+closed form.
+
+## Step 5: KPM, and how it tracks exact diagonalization
+
+The Kernel Polynomial Method reconstructs the same $\rho(E)$ from Chebyshev moments
+using only sparse matrix-vector products, the operation that scales to the large
+supercells transport needs and never diagonalizes anything. A smooth KPM curve
+needs a spectrum dense enough that the broadening covers several levels, so first
+expand to a larger cell, then let one `compare` command overlay all four routes:
+
+```bash
+echo '{ "label": "chain1d", "mode": "sparse", "supercell": [4000, 1, 1] }' > chain1d.w2s
+wannier2sparse -x chain1d.w2s            # 4000-site chain1d.HAM.CSR
+python3 ../../../w2s_dos.py chain1d.HAM.CSR --mode compare --analytic chain1d \
+        --overlay chain1d_ondemand.json --moments 512 --vectors 30 --ymax 1.5 \
+        --out ../../../img/chain1d_validation.png
+```
+
+![Density of states of the 1D chain from four routes that overlap: closed form, exact diagonalization of H(k), exact diagonalization of the sparse supercell matrix, and KPM](../img/chain1d_validation.png)
+
+FIG. 2. Density of states $\rho(E)$ per site of the 1D chain from four routes that
+agree: solid grey, the closed form $\rho=1/(\pi\sqrt{4t^2-E^2})$; dashed green,
+exact diagonalization of $H(k)$ on a dense $k$-mesh (no supercell); open blue
+circles, exact dense diagonalization of the expanded sparse supercell matrix;
+dash-dotted orange, KPM ($M=512$ moments, $R=30$ vectors, Jackson kernel) on that
+same matrix. Exact curves use a Gaussian broadening $\eta=0.025$ eV; chain $t=-1$,
+band $[-2,2]$, on a $4000\times1\times1$ supercell.
+
+KPM sits on the exact curve: with a large enough cell and enough moments it is
+exact up to a controlled broadening. Raise $M$ on too small an $N$ and KPM instead
+resolves a comb of individual levels rather than a band, the resolution lesson made
+visible: $N$ sets which energies exist, $M$ and the kernel set how sharply each is
+drawn.
+
+## Step 6: the same DOS from lsquant
+
+KPM here is a stand-in for the production route. **lsquant** is the linear-scaling
+KPM transport code that consumes the `wannier2sparse` CSR directly; running its DOS
+on `chain1d.HAM.CSR` reproduces the exact-diagonalization curve above. That is the
+end-to-end check that the operator `wannier2sparse` exported is the one the
+transport code actually sees. See [lsquant](TODO-LSQUANT-URL).
+
+<!-- TODO[lsquant]: replace TODO-LSQUANT-URL with the lsquant repository/docs link
+     (same placeholder as the main README; see documentation_todo.md). -->
+
+
 
 ## What to take away
 
 - The 1D chain has a single cosine band $E = 2t\cos k$ over $[-2, 2]$ for $t=-1$,
   with inverse-square-root van Hove divergences at both edges.
-- The primitive blocks $H(R)$ are the entire model; expansion and KPM only choose
-  how it is sampled and drawn, never what it contains.
+- The DOS agrees across four routes — closed form, exact diagonalization of $H(k)$,
+  exact diagonalization of the sparse supercell matrix, and KPM — so the pipeline
+  adds no physics; the sparse matrix carries the same spectrum, and KPM and lsquant
+  reproduce it.
 - The supercell size $N$ sets the energy sampling and the KPM moment count $M$
   sets the broadening; a smooth, faithful curve needs both.
 - A run is one small `.w2s` file, executed with `wannier2sparse -x model.w2s`.
@@ -137,5 +183,9 @@ to KPM density, on models where the band structure is no longer a single cosine.
   [arXiv:1907.09788](https://arxiv.org/abs/1907.09788).
 - Transport methodology: Z. Fan, J. H. Garcia, A. W. Cummings et al., Linear
   scaling quantum transport methodologies, Phys. Rep. 903, 1 (2021),
-  arXiv:1811.07387.
+  [arXiv:1811.07387](https://arxiv.org/abs/1811.07387).
+- lsquant, the linear-scaling KPM transport code that consumes the CSR output:
+  [lsquant](TODO-LSQUANT-URL).
+- The exact-diagonalization and DOS utilities used here:
+  [`tools/hr_exactdiag.py`](../../tools/hr_exactdiag.py), [`w2s_dos.py`](../w2s_dos.py).
 - Installation: see the main README of the repository.
