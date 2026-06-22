@@ -1,7 +1,7 @@
 # The `.w2s` input file
 
 A run is described by one `.w2s` file and executed with `wannier2sparse -x file.w2s`
-(or `--run file.w2s`). It is JSON, with `//` line and `/* */` block comments allowed,
+(or `--input-file file.w2s`). It is JSON, with `//` line and `/* */` block comments allowed,
 so the file can be self-documenting. Only the keys you set take effect; everything
 else takes its default.
 
@@ -36,6 +36,35 @@ A minimal sparse run:
 
 Spectral bounds, self-consistency checks, and the run log are produced
 automatically; there are no keys to turn them on.
+
+## Provenance and the band k-path
+
+The `provenance` block records DFT/Wannier sources: `qe_xml` and `win` are paths the
+tool parses (in `bundle` mode) into the manifest, `manual` is a user-typed block (see
+the README), and `kpoint_path` is the band high-symmetry path:
+
+```json
+"provenance": {
+  "win": "graphene.win",
+  "kpoint_path": {
+    "source": "win",
+    "nodes": [
+      { "label": "G", "k": [0.0, 0.0, 0.0] },
+      { "label": "M", "k": [0.5, 0.0, 0.0] },
+      { "label": "K", "k": [0.3333333, 0.3333333, 0.0] },
+      { "label": "G", "k": [0.0, 0.0, 0.0] }
+    ]
+  }
+}
+```
+
+You rarely write `kpoint_path` by hand. `wannier2sparse --provenance SEED` extracts it
+— preferring the Wannier90 `.win` `kpoint_path` block, falling back to a QE `bands.in`
+(`--qe-bands FILE`, a `K_POINTS crystal_b` path) — and writes/merges it into
+`SEED.w2s`. It then travels into the bundle `manifest.json` at run time, and
+`tools/hr_exactdiag.py bands` reads it from the `.w2s` to draw the Wannier bands on
+the DFT high-symmetry path. Coordinates are fractional (crystal); `source` is `win`,
+`qe_bands`, or `w2s`.
 
 ## Operators you provide yourself
 

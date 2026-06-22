@@ -32,7 +32,9 @@ your OK · **[CODE]** = needs the follow-up code PR · **[DOING]** = doc work st
   default stays). The minimal `.w2s` no longer shows them.
 - **[CONFIRM] Docs-first**, code (`-x`, `--provenance`, schema, defaults) in a second
   PR once the CLI shape here is agreed.
-- **[CONFIRM] Run flag is `-x` / `--run`** (replacing the bare `wannier2sparse file.w2s`).
+- **[RESOLVED] Run flag is `-x` / `--input-file`** — implemented as the official run
+  flag; the `--run`/`--config`/`--input` synonyms and the bare `wannier2sparse
+  file.w2s` shortcut were removed (a bare `.w2s` now errors with a hint to use `-x`).
 
 ---
 
@@ -63,11 +65,16 @@ keys that were explicitly set — I'll pick the simplest robust route when codin
 
 ## D. CLI shape to implement in the follow-up code PR  (so the docs are true)
 
-- **[CODE] `-x` / `--run`** as the run flag (and decide whether the bare
-  `wannier2sparse file.w2s` keeps working or is removed).
-- **[CODE] `-p` / `--provenance`** to read QE/Wannier90 output and emit a `.w2s`;
-  **`-ws2 NAME`** chooses the output file. Note: `-p` currently means `--project`;
-  proposal is to free `-p` for provenance and keep `--project` long-form only.
+- **[DONE] `-x` / `--input-file`** is the run flag; the bare `wannier2sparse
+  file.w2s` shortcut and the `--run`/`--config`/`--input` synonyms were removed.
+- **[PARTIAL] `--provenance SEED`** implemented for the band **k-path**: it reads
+  `SEED.win`'s `kpoint_path` (preferred) or a QE `bands.in` (`--qe-bands FILE`,
+  `crystal_b`) and writes/merges `provenance.kpoint_path` into `SEED.w2s`; the path
+  flows into the bundle manifest and is read by `hr_exactdiag.py bands`. `-p` was
+  kept as `--project` (no `-ws2`; the output is `<SEED>.w2s`). Still planned:
+  extracting the *rest* of the provenance (basis, structure, pseudopotentials,
+  non-default settings) into the `.w2s` — today bundle mode captures those into the
+  manifest from the referenced `.win`/`qe_xml`.
 - **[CODE] `VXSZ`** (and the family) to build the expanded anticommutator ½{V,S}.
 - **[CODE] Defaults**: `emit_bounds` and `checks` ON by default.
 - **[CODE] `operators/` folder** as the default location for user-supplied operator

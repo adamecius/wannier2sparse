@@ -97,6 +97,22 @@ struct Projection
 };
 
 /**
+ * @brief One high-symmetry node on the band k-path (label + fractional k).
+ *
+ * The band path is recorded as an ordered list of these nodes (e.g. G-M-K-G),
+ * extracted from the Wannier90 `.win` `kpoint_path` block or a Quantum ESPRESSO
+ * `K_POINTS crystal_b` block, so the Wannier bands can be drawn on the same
+ * high-symmetry path the DFT used. Coordinates are fractional (crystal) and the
+ * label is the symmetry-point name as written in the source (G/Gamma kept verbatim).
+ */
+struct KpathNode
+{
+    std::string          label;   ///< symmetry-point label (e.g. "G", "M", "K")
+    std::array<double,3> k;       ///< fractional (crystal) coordinates
+    KpathNode() : k({{0,0,0}}) {}
+};
+
+/**
  * @brief Wannier90 conditions, parsed from the .win file.
  */
 struct WannierProvenance
@@ -117,6 +133,8 @@ struct WannierProvenance
     bool             has_dis_froz;
     double           dis_froz_min, dis_froz_max;
     bool             use_ws_distance;
+    std::vector<KpathNode> kpoint_path;       ///< band high-symmetry path (G-M-K-...), if present
+    std::string      kpoint_path_source;      ///< where the path came from ("win" or "qe_bands")
 
     WannierProvenance()
         : present(false), has_num_wann(false), num_wann(0), has_num_bands(false),

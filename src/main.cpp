@@ -342,6 +342,16 @@ static int run_bundle_mode(const W2SP_arguments& args, Logger& log, RunStats& st
     else if (!args.win_path.empty())
         log.warn(".win provenance file '" + args.win_path + "' not found");
 
+    // Band high-symmetry k-path baked into the .w2s (by --provenance) takes effect
+    // when the .win was absent or carried no kpoint_path, so the recorded path still
+    // reaches the manifest output.
+    if (prov.wann.kpoint_path.empty() && !args.kpoint_path.empty())
+    {
+        prov.wann.present = true;
+        prov.wann.kpoint_path = args.kpoint_path;
+        prov.wann.kpoint_path_source = args.kpoint_path_source.empty() ? "w2s" : args.kpoint_path_source;
+    }
+
     // DFT (Quantum ESPRESSO) provenance from data-file-schema.xml. Only parsed
     // when a path was given (no default location); absent/unparsable => null.
     if (!args.qe_xml_path.empty())
@@ -852,7 +862,55 @@ int main(int argc, char* argv[])
         if (!f.good()) { cerr << args.program_name << ": error: cannot write template '" << path << "'\n"; return 1; }
         write_run_config_template(f);
         cout << "Wrote template -> " << path << "\n";
-        cout << "Edit it, then run:  " << args.program_name << " " << path << "\n";
+        cout << "Edit it, then run:  " << args.program_name << " -x " << path << "\n";
+        return 0;
+    }
+
+    // --provenance SEED [--win FILE] [--qe-bands FILE]: extract provenance from the
+    // model's side files and write (or merge) it into <SEED>.w2s, then exit. Records
+    // the band high-symmetry k-path, preferring the .win kpoint_path block and
+    // falling back to a QE bands.in crystal_b path. The path travels into the bundle
+    // manifest at run time and is read back by tools/hr_exactdiag.py bands.
+    if (args.make_provenance)
+    {
+        const string seed = args.seed.empty() ? args.label : args.seed;
+        const string out_path = args.label + ".w2s";
+
+        // Merge onto an existing <SEED>.w2s so an earlier run spec is preserved.
+        W2SP_arguments pa;
+        if (file_exists(out_path))
+            try { read_run_config(out_path).apply_to(pa); }
+            catch (const std::exception& e) { cerr << args.program_name << ": warning: could not read existing " << out_path << " (" << e.what() << "); writing a fresh one\n"; }
+        pa.label = args.label;
+
+        std::vector<KpathNode> kpath; string src;
+        const string winf = !args.win_path.empty() ? args.win_path : (seed + ".win");
+        if (file_exists(winf))
+        {
+            try {
+                WannierProvenance w = parse_win_provenance(winf);
+                if (!w.kpoint_path.empty()) { kpath = w.kpoint_path; src = "win"; pa.win_path = winf; }
+            } catch (const std::exception& e) { cerr << args.program_name << ": warning: " << e.what() << "\n"; }
+        }
+        if (kpath.empty() && !args.qe_bands_path.empty() && file_exists(args.qe_bands_path))
+        {
+            try { kpath = parse_qe_bands_kpath(args.qe_bands_path); src = "qe_bands"; }
+            catch (const std::exception& e) { cerr << args.program_name << ": warning: " << e.what() << "\n"; }
+        }
+        if (kpath.empty())
+        {
+            cerr << args.program_name << ": error: no band k-path found"
+                 << " (looked for a kpoint_path block in " << winf
+                 << (args.qe_bands_path.empty() ? "" : (" and a crystal_b block in " + args.qe_bands_path)) << ")\n";
+            return 1;
+        }
+        pa.kpoint_path = kpath; pa.kpoint_path_source = src;
+
+        std::ofstream f(out_path.c_str());
+        if (!f.good()) { cerr << args.program_name << ": error: cannot write '" << out_path << "'\n"; return 1; }
+        write_run_config(pa, f);
+        cout << "Wrote provenance -> " << out_path << " (" << kpath.size()
+             << " k-path nodes from " << src << ")\n";
         return 0;
     }
 
@@ -880,7 +938,7 @@ int main(int argc, char* argv[])
         if (!f.good()) { cerr << args.program_name << ": error: cannot write input file '" << path << "'\n"; return 1; }
         write_run_config(sub, f);
         cout << "Wrote input file -> " << path << "\n";
-        cout << "Edit it, then run:  " << args.program_name << " " << path << "\n";
+        cout << "Edit it, then run:  " << args.program_name << " -x " << path << "\n";
         return 0;
     }
 
@@ -897,7 +955,7 @@ int main(int argc, char* argv[])
             return 1;
         }
         cfg.apply_to(args);
-        if (!cfg.has_mode) args.mode = "bundle";        // --run/--input/--config defaults to bundle
+        if (!cfg.has_mode) args.mode = "bundle";        // -x input file defaults to bundle
         if (args.label.empty())
         {
             cerr << args.program_name << ": error: input file must set a non-empty \"label\"\n";
@@ -907,7 +965,7 @@ int main(int argc, char* argv[])
 
     // --write: scaffold the equivalent JSON input file from the CLI and exit,
     // instead of running. The positional CLI is thus a generator for the input
-    // file (edit it, then run it with --run), not an execution path of its own.
+    // file (edit it, then run it with -x), not an execution path of its own.
     if (args.write_config)
     {
         make_dir(args.output_dir);

@@ -57,7 +57,7 @@ public:
     bool                     orbital_l;       ///< --orbital-L: build orbital angular momentum
     std::string              check;           ///< --check selector
     std::string              mode;            ///< --mode: "sparse" (default) or "bundle"
-    std::string              config_path;     ///< --config: path to a run.json (bundle driver)
+    std::string              config_path;     ///< -x/--input-file: path to the .w2s input file
     bool                     has_truncation;  ///< truncation_threshold was set (from run.json)
     double                   truncation_threshold; ///< bundle truncation threshold (manifest)
     std::string              qe_xml_path;     ///< QE data-file-schema.xml for DFT provenance
@@ -82,6 +82,10 @@ public:
      */
     std::string              velocity_mode;
     std::string              r_dat_path;      ///< override path to the position matrix _r.dat
+    std::vector<KpathNode>   kpoint_path;     ///< band high-symmetry path (provenance), if recorded
+    std::string              kpoint_path_source; ///< where it came from: "win" | "qe_bands" | "w2s"
+    bool                     make_provenance; ///< --provenance: extract provenance into a .w2s and exit
+    std::string              qe_bands_path;   ///< --qe-bands: QE bands.in for the crystal_b k-path
 
     /**
      * @brief Default constructor.
@@ -93,7 +97,8 @@ public:
           log_level("info"), no_log_file(false), write_config(false),
           create_template(false), create_from_string(false),
           program_name("wannier2sparse"),
-          covariant_velocity(false), velocity_mode("berry_connection") {}
+          covariant_velocity(false), velocity_mode("berry_connection"),
+          make_provenance(false) {}
 
     /**
      * @brief Whether a string ends with a given suffix.
@@ -233,7 +238,7 @@ public:
                     return EXIT_ERROR;
                 }
             }
-            else if (a == "--run" || a == "--config" || a == "--input")
+            else if (a == "-x" || a == "--input-file")
             {
                 if (i + 1 >= argc) { error("missing path after '" + a + "'"); return EXIT_ERROR; }
                 config_path = argv[++i];
@@ -255,6 +260,22 @@ public:
             {
                 if (i + 1 >= argc) { error("missing name after '" + a + "'"); return EXIT_ERROR; }
                 create_inp = argv[++i];
+            }
+            else if (a == "--provenance")
+            {
+                make_provenance = true;
+                // Optional SEED: consume the next token unless it is an option.
+                if (i + 1 < argc && argv[i+1][0] != '-') label = argv[++i];
+            }
+            else if (a == "--win")
+            {
+                if (i + 1 >= argc) { error("missing path after '--win'"); return EXIT_ERROR; }
+                win_path = argv[++i];
+            }
+            else if (a == "--qe-bands")
+            {
+                if (i + 1 >= argc) { error("missing path after '--qe-bands'"); return EXIT_ERROR; }
+                qe_bands_path = argv[++i];
             }
             else if (a == "--verbose")             { log_level = "debug"; }
             else if (a == "--quiet")               { log_level = "warn"; }
@@ -309,18 +330,25 @@ public:
             else                                   { positional.push_back(a); }
         }
 
-        // --create-template / --create are scaffolding actions: they write a `.w2s`
-        // input file and exit, so the positional LABEL N1 N2 N3 contract does not
-        // apply. main acts on them.
+        // --create-template / --create / --provenance are scaffolding actions: they
+        // write a `.w2s` input file and exit, so the positional LABEL N1 N2 N3
+        // contract does not apply. main acts on them. (--provenance takes its SEED
+        // inline, so no positional is required.)
         if (create_template || create_from_string) return PROCEED;
-
-        // The `.w2s` interface: `wannier2sparse input.w2s` runs that input file,
-        // exactly as `--run input.w2s` would. A lone positional with the .w2s suffix
-        // is taken as the input path.
-        if (config_path.empty() && positional.size() == 1 && ends_with(positional[0], ".w2s"))
+        if (make_provenance)
         {
-            config_path = positional[0];
-            positional.clear();
+            if (label.empty() && !positional.empty()) { label = positional[0]; positional.clear(); }
+            if (label.empty()) { error("--provenance needs a SEED (e.g. --provenance graphene)"); return EXIT_ERROR; }
+            return PROCEED;
+        }
+
+        // The `.w2s` interface is `-x FILE` (the official run flag). A bare `.w2s`
+        // positional is no longer auto-run; catch it and point at -x rather than
+        // failing with a confusing "expected LABEL N1 N2 N3".
+        if (config_path.empty() && !positional.empty() && ends_with(positional[0], ".w2s"))
+        {
+            error("to run an input file, use '-x " + positional[0] + "'");
+            return EXIT_ERROR;
         }
 
         // With --config the run.json supplies the label/operators/provenance, so
@@ -384,9 +412,10 @@ private:
 
     void print_usage() const
     {
-        std::cerr << "usage: " << program_name << " INPUT.w2s\n"
+        std::cerr << "usage: " << program_name << " -x INPUT.w2s\n"
                   << "       " << program_name << " --create-template [NAME]\n"
                   << "       " << program_name << " --create \"LABEL N1 N2 N3 [OP ...]\" [-inp NAME]\n"
+                  << "       " << program_name << " --provenance SEED [--win FILE] [--qe-bands FILE]\n"
                   << "       " << program_name << " LABEL N1 N2 N3 [OP ... | all] [-o DIR]\n"
                   << "       " << program_name << " --help\n";
     }
@@ -412,9 +441,10 @@ private:
 "and export the Hamiltonian and operators as sparse (CSR) matrices.\n"
 "\n"
 "USAGE\n"
-"  " << program_name << " INPUT.w2s                              run from an input file\n"
+"  " << program_name << " -x INPUT.w2s                           run from an input file\n"
 "  " << program_name << " --create-template [NAME]              scaffold an annotated NAME.w2s\n"
 "  " << program_name << " --create \"LABEL N1 N2 N3 [OP...]\" [-inp NAME]   scaffold from a CLI line\n"
+"  " << program_name << " --provenance SEED [--win FILE] [--qe-bands FILE]   extract provenance into SEED.w2s\n"
 "  " << program_name << " LABEL N1 N2 N3 [OP ... | all] [options]   legacy positional run\n"
 "\n"
 "INPUT FILE (.w2s)\n"
@@ -422,7 +452,7 @@ private:
 "  allowed). It concentrates every option (label, mode, supercell, operators,\n"
 "  checks, logging, and DFT/Wannier provenance) in one validated, traceable place.\n"
 "  Create one with --create-template (blank, documented) or --create \"...\" (from a\n"
-"  command line), edit it, then run it: `" << program_name << " input.w2s`.\n"
+"  command line), edit it, then run it: `" << program_name << " -x input.w2s`.\n"
 "  Every run also writes a `<LABEL>.out` JSON receipt: per-step timing, peak memory,\n"
 "  warning/error tally, and the list of operators written with the input files that\n"
 "  produced each (provenance link).\n"
@@ -474,10 +504,9 @@ private:
 "                         JSON manifest with provenance to <out>/<LABEL>.w2sp/, for\n"
 "                         lsquant to build the Hamiltonian itself). In bundle mode\n"
 "                         the supercell dimensions are optional and ignored.\n"
-"      --run PATH         Run from a `.w2s` (or legacy run.json) input file: label,\n"
-"                         mode, supercell, operators, output dir, checks and DFT/\n"
-"                         Wannier provenance are all read from it. Equivalent to\n"
-"                         passing the file positionally. (--input/--config synonyms.)\n"
+"  -x, --input-file PATH  Run from a `.w2s` input file: label, mode, supercell,\n"
+"                         operators, output dir, checks and DFT/Wannier provenance\n"
+"                         are all read from it. This is the recommended interface.\n"
 "      --create-template [NAME]\n"
 "                         Write a fully-annotated template to NAME.w2s (default\n"
 "                         template.w2s) and exit. The scaffold is itself runnable.\n"
@@ -485,6 +514,15 @@ private:
 "                         and serialize the equivalent <stem>.w2s, then exit.\n"
 "  -inp, --inp NAME       Target stem for --create / --create-template (else the\n"
 "                         LABEL from the command line, else 'template').\n"
+"      --provenance SEED  Extract provenance from the model's side files and write\n"
+"                         (or merge) it into SEED.w2s, then exit. Currently records\n"
+"                         the band high-symmetry k-path: from SEED.win's kpoint_path\n"
+"                         block (preferred), else a QE bands.in --qe-bands file. The\n"
+"                         k-path travels with the model into the bundle manifest and\n"
+"                         is read back by tools/hr_exactdiag.py bands.\n"
+"      --win FILE         Wannier90 .win to read provenance from (default SEED.win).\n"
+"      --qe-bands FILE    Quantum ESPRESSO bands.in (K_POINTS crystal_b) k-path\n"
+"                         source, used as a fallback when no .win kpoint_path exists.\n"
 "      --write            Do not run; serialize the equivalent input file to\n"
 "                         <output>/<LABEL>.w2s from the positional arguments.\n"
 "      --verbose          Console log level DEBUG (default INFO).\n"
@@ -506,7 +544,7 @@ private:
 "\n"
 "EXAMPLES\n"
 "  " << program_name << " --create-template graphene        # -> graphene.w2s (edit it)\n"
-"  " << program_name << " graphene.w2s                       # run it\n"
+"  " << program_name << " -x graphene.w2s                    # run it\n"
 "  " << program_name << " --create \"graphene 50 50 1 VX SZ\"  # -> graphene.w2s\n"
 "  " << program_name << " graphene 50 50 1                    # legacy direct run\n"
 "  " << program_name << " graphene 50 50 1 all -o out\n";
