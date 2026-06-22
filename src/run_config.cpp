@@ -301,6 +301,29 @@ ManualProvenance parse_manual_provenance(const JsonValue& m)
     return mp;
 }
 
+/// Parse the optional `provenance.kpoint_path` block { source?, nodes:[{label,k:[x,y,z]}] }.
+std::vector<KpathNode> parse_kpoint_path(const JsonValue& kp, std::string& source)
+{
+    if (kp.type != JsonValue::OBJ)
+        throw std::runtime_error("run.json: 'provenance.kpoint_path' must be an object");
+    if (const JsonValue* s = find(kp, "source")) source = expect_string(*s, "provenance.kpoint_path.source");
+    const JsonValue* nodes = find(kp, "nodes");
+    if (!nodes || nodes->type != JsonValue::ARR)
+        throw std::runtime_error("run.json: 'provenance.kpoint_path.nodes' must be an array");
+    std::vector<KpathNode> out;
+    for (const JsonValue& e : nodes->arr)
+    {
+        KpathNode n;
+        if (const JsonValue* lv = find(e, "label")) n.label = expect_string(*lv, "kpoint_path.nodes[].label");
+        const JsonValue* kv = find(e, "k");
+        if (!kv || kv->type != JsonValue::ARR || kv->arr.size() != 3)
+            throw std::runtime_error("run.json: each kpoint_path node needs \"k\": [kx,ky,kz]");
+        for (int j = 0; j < 3; ++j) n.k[j] = expect_number(kv->arr[j], "kpoint_path.nodes[].k[]");
+        out.push_back(n);
+    }
+    return out;
+}
+
 } // namespace
 
 RunConfig read_run_config(const std::string& path)
@@ -409,6 +432,7 @@ RunConfig read_run_config(const std::string& path)
         if (const JsonValue* v = find(*prov, "qe_xml")) { cfg.has_qe_xml = true; cfg.qe_xml = expect_string(*v, "provenance.qe_xml"); }
         if (const JsonValue* v = find(*prov, "win"))    { cfg.has_win = true;    cfg.win = expect_string(*v, "provenance.win"); }
         if (const JsonValue* v = find(*prov, "manual")) { cfg.has_manual = true; cfg.manual = parse_manual_provenance(*v); }
+        if (const JsonValue* v = find(*prov, "kpoint_path")) { cfg.has_kpoint_path = true; cfg.kpoint_path = parse_kpoint_path(*v, cfg.kpoint_path_source); }
     }
 
     return cfg;
@@ -478,13 +502,30 @@ void write_run_config(const W2SP_arguments& a, std::ostream& os)
         if (!a.check.empty())  w.member("checks", a.check);
         if (a.has_truncation)  w.member("truncation_threshold", a.truncation_threshold);
 
-        if (!a.qe_xml_path.empty() || !a.win_path.empty() || a.manual.present)
+        if (!a.qe_xml_path.empty() || !a.win_path.empty() || a.manual.present || !a.kpoint_path.empty())
         {
             w.key("provenance");
             w.begin_object();
                 if (!a.qe_xml_path.empty()) w.member("qe_xml", a.qe_xml_path);
                 if (!a.win_path.empty())    w.member("win", a.win_path);
                 if (a.manual.present)     { w.key("manual"); emit_manual_provenance(w, a.manual); }
+                if (!a.kpoint_path.empty())
+                {
+                    w.key("kpoint_path");
+                    w.begin_object();
+                        if (!a.kpoint_path_source.empty()) w.member("source", a.kpoint_path_source);
+                        w.key("nodes");
+                        w.begin_array();
+                        for (const KpathNode& n : a.kpoint_path)
+                        {
+                            w.begin_object();
+                                w.member("label", n.label);
+                                w.key("k"); w.array_d(n.k);
+                            w.end_object();
+                        }
+                        w.end_array();
+                    w.end_object();
+                }
             w.end_object();
         }
 
@@ -499,11 +540,11 @@ void write_run_config_template(std::ostream& os)
     // Hand-written (not via JsonWriter) so it can carry `//` documentation. The
     // reader skips comments, so this scaffold parses back unchanged. Values are
     // valid defaults: edit them, delete the keys you do not need, then run with
-    //   wannier2sparse <thisfile>.w2s
+    //   wannier2sparse -x <thisfile>.w2s
     os <<
 "{\n"
 "  // wannier2sparse input file (.w2s). JSON with // and /* */ comments allowed.\n"
-"  // Run it with:  wannier2sparse <thisfile>.w2s   (or  --run <thisfile>)\n"
+"  // Run it with:  wannier2sparse -x <thisfile>.w2s\n"
 "\n"
 "  \"label\": \"LABEL\",          // system label; default seed for LABEL_hr.dat, LABEL.uc, LABEL.xyz\n"
 "  \"mode\": \"sparse\",          // \"sparse\" -> expand to supercell CSR; \"bundle\" -> primitive ops + manifest\n"
@@ -540,6 +581,10 @@ void write_run_config_template(std::ostream& os)
 "  \"provenance\": {\n"
 "    \"qe_xml\": \"\",             // Quantum ESPRESSO data-file-schema.xml (auto-parsed DFT provenance)\n"
 "    \"win\": \"\",                // Wannier90 .win (auto-parsed Wannier provenance)\n"
+"\n"
+"    // Band high-symmetry k-path; usually written by `wannier2sparse --provenance`,\n"
+"    // not by hand. Read back by tools/hr_exactdiag.py bands. Fractional coordinates.\n"
+"    // \"kpoint_path\": { \"source\": \"win\", \"nodes\": [ { \"label\": \"G\", \"k\": [0,0,0] } ] },\n"
 "\n"
 "    // Manual provenance: declare here what no side-file provides. Use this when\n"
 "    // the model arrives as a bare _hr.dat. Documentation only; never affects numerics.\n"

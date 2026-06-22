@@ -26,4 +26,17 @@
  */
 WannierProvenance parse_win_provenance(const std::string& winfile);
 
+/**
+ * @brief Parse the band high-symmetry k-path from a Quantum ESPRESSO `bands.in`.
+ * @param bandsfile path to a QE input with a `K_POINTS crystal_b` block
+ * @return the ordered list of high-symmetry nodes (label + fractional k)
+ * @throws std::runtime_error if the file cannot be opened or has no crystal_b block
+ *
+ * The `crystal_b` form lists one node per line as `kx ky kz nseg ! LABEL` in
+ * fractional (crystal) coordinates — the same path the DFT bands were computed on.
+ * This is the fallback k-path source for `--provenance` when the Wannier90 `.win`
+ * carries no `kpoint_path` block.
+ */
+std::vector<KpathNode> parse_qe_bands_kpath(const std::string& bandsfile);
+
 #endif

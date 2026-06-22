@@ -73,6 +73,8 @@ struct RunConfig
     bool        has_qe_xml;       std::string qe_xml;
     bool        has_win;          std::string win;
     bool        has_manual;       ManualProvenance manual;  ///< user-declared provenance block
+    bool        has_kpoint_path;  std::vector<KpathNode> kpoint_path;  ///< band high-symmetry path
+    std::string kpoint_path_source;                          ///< "win" | "qe_bands" | "w2s"
     bool        has_log_level;    std::string log_level;
     bool        has_log_file;     std::string log_file;
 
@@ -85,7 +87,8 @@ struct RunConfig
           emit_bounds(false), has_checks(false), has_truncation(false),
           truncation_threshold(0.0), has_velocity_mode(false), has_r_dat(false),
           has_qe_xml(false), has_win(false),
-          has_manual(false), has_log_level(false), has_log_file(false) {}
+          has_manual(false), has_kpoint_path(false),
+          has_log_level(false), has_log_file(false) {}
 
     /**
      * @brief Project the config onto a W2SP_arguments, overriding only set keys.
@@ -115,6 +118,7 @@ struct RunConfig
         if (has_qe_xml)       a.qe_xml_path  = qe_xml;
         if (has_win)          a.win_path     = win;
         if (has_manual)       a.manual       = manual;
+        if (has_kpoint_path)  { a.kpoint_path = kpoint_path; a.kpoint_path_source = kpoint_path_source; }
         if (has_log_level)    a.log_level    = log_level;
         if (has_log_file)     a.log_file     = log_file;
     }

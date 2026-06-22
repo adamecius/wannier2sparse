@@ -92,6 +92,34 @@ DEFAULT_PATH = [("G", (0, 0, 0), 400), ("X", (.5, 0, 0), 400), ("S", (.5, .5, 0)
                 ("Y", (0, .5, 0), 400), ("G", (0, 0, 0), 400), ("S", (.5, .5, 0), 0)]
 
 
+def read_w2s_kpath(path):
+    """Read a band path recorded in a `.w2s` input under provenance.kpoint_path.
+
+    Returns [(label, (kx,ky,kz), 0), ...] in fractional coordinates (segment counts
+    left 0 so build_kpath falls back to the uniform --npts), or None if the file has
+    no recorded path. The `.w2s` is JSON with `//` and `/* */` comments allowed (as
+    the C++ reader tolerates), so those are stripped before json.loads. This is the
+    path `wannier2sparse --provenance` extracts from the Wannier90 .win / QE bands.in
+    and bakes into the input, so the Wannier bands draw on the DFT high-symmetry path
+    with no separate argument.
+    """
+    import re
+    try:
+        raw = open(path).read()
+    except OSError:
+        return None
+    raw = re.sub(r"/\*.*?\*/", "", raw, flags=re.S)          # block comments
+    raw = re.sub(r"//[^\n]*", "", raw)                       # line comments
+    try:
+        doc = json.loads(raw)
+    except (ValueError, json.JSONDecodeError):
+        return None
+    kp = (doc.get("provenance") or {}).get("kpoint_path")
+    if not kp or not kp.get("nodes"):
+        return None
+    return [(n.get("label", f"k{i}"), tuple(n["k"]), 0) for i, n in enumerate(kp["nodes"])]
+
+
 def read_qe_kpath(path):
     """Parse a Quantum ESPRESSO `K_POINTS crystal_b` block into band-path nodes.
 
@@ -147,10 +175,15 @@ def build_kpath(lattice, nodes=DEFAULT_PATH, npts=None):
 # -------------------------------------------------------------------- subcommands
 def cmd_bands(a):
     iR, H = read_hr(f"{a.seed}_hr.dat"); lat = read_uc(f"{a.seed}.uc")
-    if a.kpath:                                      # use the DFT band path (same k-points)
+    w2s_path = a.w2s if a.w2s else f"{a.seed}.w2s"
+    w2s_nodes = read_w2s_kpath(w2s_path)
+    if a.kpath:                                      # explicit QE band path wins
         nodes = read_qe_kpath(a.kpath)
         kf, xd, tx, lbl = build_kpath(lat, nodes=nodes)
         print(f"bands: using DFT k-path from {a.kpath} ({len(nodes)} nodes: {'-'.join(n[0] for n in nodes)})")
+    elif w2s_nodes:                                  # path recorded by --provenance in the .w2s
+        kf, xd, tx, lbl = build_kpath(lat, nodes=w2s_nodes, npts=a.npts)
+        print(f"bands: using recorded k-path from {w2s_path} ({len(w2s_nodes)} nodes: {'-'.join(n[0] for n in w2s_nodes)})")
     else:
         kf, xd, tx, lbl = build_kpath(lat, npts=a.npts)
     Hk = opk(iR, H, kf); Hk = 0.5 * (Hk + np.conj(np.transpose(Hk, (0, 2, 1))))
@@ -316,6 +349,9 @@ def main(argv=None):
     b.add_argument("--kpath", default=None, metavar="QE_BANDS_IN",
                    help="QE 'K_POINTS crystal_b' file (e.g. qe/bands.in) — build the Wannier "
                         "bands on the same k-path as the DFT, for a point-for-point overlay")
+    b.add_argument("--w2s", default=None, metavar="W2S",
+                   help="read the band path recorded under provenance.kpoint_path of this .w2s "
+                        "(default <seed>.w2s); written by 'wannier2sparse --provenance'")
     b.add_argument("--no-plot", action="store_true"); b.set_defaults(fn=cmd_bands)
     d = sub.add_parser("dos"); common(d); d.set_defaults(fn=cmd_dos)
     s = sub.add_parser("sigma"); common(s); s.add_argument("--comp", default="xx", choices=["xx", "xy"]); s.set_defaults(fn=cmd_sigma)

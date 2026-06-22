@@ -120,6 +120,30 @@ int main()
         assert(back.manual.orbitals[0].xyz[2] == 3.0);
     }
 
+    // 5) provenance.kpoint_path round-trips through read_run_config + write_run_config.
+    {
+        ofstream("kp.w2s") <<
+            "{ \"label\": \"gr\", \"provenance\": { \"kpoint_path\": {\n"
+            "  \"source\": \"win\",\n"
+            "  \"nodes\": [ {\"label\":\"G\",\"k\":[0,0,0]}, {\"label\":\"M\",\"k\":[0.5,0,0]},\n"
+            "              {\"label\":\"K\",\"k\":[0.3333333,0.3333333,0]} ] } } }\n";
+        RunConfig c = read_run_config("kp.w2s");
+        assert(c.has_kpoint_path && c.kpoint_path.size() == 3);
+        assert(c.kpoint_path_source == "win");
+        assert(c.kpoint_path[0].label == "G" && c.kpoint_path[1].label == "M");
+        assert(c.kpoint_path[1].k[0] == 0.5);
+
+        // apply_to -> args -> write_run_config -> re-read preserves the path.
+        W2SP_arguments a; c.apply_to(a);
+        assert(a.kpoint_path.size() == 3 && a.kpoint_path_source == "win");
+        { ofstream f("kp_written.w2s"); write_run_config(a, f); }
+        const string kbody = slurp("kp_written.w2s");
+        assert(has(kbody, "\"kpoint_path\"") && has(kbody, "\"nodes\"") && has(kbody, "\"K\""));
+        RunConfig back = read_run_config("kp_written.w2s");
+        assert(back.has_kpoint_path && back.kpoint_path.size() == 3 &&
+               back.kpoint_path[2].label == "K");
+    }
+
     cout << "W2S INPUT FORMAT TEST PASSED" << endl;
     return 0;
 }

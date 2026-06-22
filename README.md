@@ -53,7 +53,7 @@ This produces `build/wannier2sparse`. Run the tests with `ctest --output-on-fail
 A calculation is described by a single input file, a `.w2s`, and run with:
 
 ```bash
-wannier2sparse -x model.w2s          # long form: --run model.w2s
+wannier2sparse -x model.w2s          # long form: --input-file model.w2s
 ```
 
 The `.w2s` is a JSON file (comments allowed). Its full set of keys is documented in
@@ -111,28 +111,34 @@ crystal symmetry, the $k$-mesh, the pseudopotentials, and the Wannier centres ar
 what let you later exploit symmetries, reconstruct the band structure, or reproduce
 the model — none of which can be recovered from the `_hr.dat` alone.
 
-For the Quantum ESPRESSO + Wannier90 toolchain, wannier2sparse can collect this for
-you. From the directory of a finished run:
+The principle is to record only what is needed to reproduce the model, nothing more.
+Two surfaces carry it. A **bundle run** (`"mode": "bundle"` with
+`provenance: { "win": ..., "qe_xml": ... }` in the `.w2s`) parses those side files
+and writes the full record into the bundle `manifest.json`: from **Wannier90** the
+*basis* (the projections that define the Wannier functions), the disentanglement
+windows, `use_ws_distance`, and now the band high-symmetry $k$-path; from **Quantum
+ESPRESSO** the structure, pseudopotentials, and $k$-mesh.
+
+The **band $k$-path** can also be baked directly into the `.w2s` input so it travels
+even without the side files at run time:
 
 ```bash
-wannier2sparse -p                      # long form: --provenance
-wannier2sparse -p -ws2 graphene.w2s    # write the fields into this input file
+wannier2sparse --provenance graphene                 # reads graphene.win's kpoint_path -> graphene.w2s
+wannier2sparse --provenance graphene --qe-bands qe/bands.in   # fallback: QE 'K_POINTS crystal_b'
 ```
 
-The principle is to record only what is needed to reproduce the model, nothing more.
-From a **Wannier90** run it keeps the *basis* — the projections that define the
-Wannier functions — and the on-disk locations of the Wannier matrices
-(`_hr.dat`, `_u.mat`, `_r.dat`, `.spn`). From a **Quantum ESPRESSO** run it keeps
-what reproduces the DFT calculation: the final structure (lattice and atoms), the
-pseudopotentials, the non-default input settings (cutoffs, $k$-mesh, spin-orbit,
-… — whatever differs from the defaults), and the band $k$-path (the high-symmetry
-path used for the band structure). These go into the `.w2s` (`-ws2 NAME` chooses the
-file) and travel with every output the model produces. Recording the band path is
-what lets a tool like [`hr_exactdiag.py`](tools/hr_exactdiag.py) draw the Wannier
-bands on exactly the $k$-points the DFT used, for a point-for-point comparison.
+`--provenance SEED` extracts the high-symmetry path — preferring the Wannier90
+`.win` `kpoint_path` block, falling back to a QE `bands.in` — and writes (or merges)
+it into `SEED.w2s` under `provenance.kpoint_path`, preserving any existing run keys.
+The path then flows into the bundle `manifest.json` at run time, and
+[`hr_exactdiag.py bands`](tools/hr_exactdiag.py) reads it straight from the `.w2s`,
+so the Wannier bands are drawn on exactly the $k$-points the DFT used — with no extra
+argument. (`-p` remains `--project`; the provenance command is the long-form
+`--provenance`.)
 
-<!-- TODO[3]: this section + `-x` and `VXSZ`-as-anticommutator describe the planned CLI;
-     they require the follow-up code PR before this README is merged to master. -->
+<!-- TODO[3]: the broader --provenance (basis/structure/pseudopotentials/non-default
+     settings written into the .w2s) is still planned; today --provenance records the
+     band k-path, and bundle mode captures the rest into the manifest. -->
 
 
 ---

@@ -220,6 +220,25 @@ void emit_wannier(JsonWriter& w, const WannierProvenance& v)
             if (v.has_dis_froz) { w.member("dis_froz_min", v.dis_froz_min); w.member("dis_froz_max", v.dis_froz_max); }
         w.end_object();
         w.member("use_ws_distance", v.use_ws_distance);
+        // Band high-symmetry path, emitted only when present so manifests for models
+        // without a recorded path stay byte-identical (goldens preserved).
+        if (!v.kpoint_path.empty())
+        {
+            w.key("kpoint_path");
+            w.begin_object();
+                if (!v.kpoint_path_source.empty()) w.member("source", v.kpoint_path_source);
+                w.key("nodes");
+                w.begin_array();
+                for (const KpathNode& n : v.kpoint_path)
+                {
+                    w.begin_object();
+                        w.member("label", n.label);
+                        w.key("k"); w.array_d(n.k);
+                    w.end_object();
+                }
+                w.end_array();
+            w.end_object();
+        }
     w.end_object();
 }
 

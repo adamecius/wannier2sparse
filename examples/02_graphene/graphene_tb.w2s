@@ -1,0 +1,8 @@
+{
+  // Minimal tight-binding run: expand the idealized two-band honeycomb model in
+  // graphene_tb_hr.dat (the only file this DOS needs) into a 60x60x1 supercell and
+  // write graphene_tb.HAM.CSR. No _wsvec.dat, every ndegen = 1; range 1, so any N works.
+  "label": "graphene_tb",
+  "mode": "sparse",
+  "supercell": [60, 60, 1]
+}

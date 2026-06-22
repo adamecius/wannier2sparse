@@ -113,8 +113,8 @@ WannierProvenance parse_win_provenance(const std::string& winfile)
 
         const std::string sq = squash(line);
 
-        // Block boundaries. We only capture the projections block; other blocks
-        // (unit_cell_cart, atoms_frac, kpoints, ...) are skipped.
+        // Block boundaries. We capture the projections and kpoint_path blocks;
+        // other blocks (unit_cell_cart, atoms_frac, kpoints, ...) are skipped.
         if (sq.rfind("begin", 0) == 0)
         {
             current_block = squash(line.substr(line.find_first_not_of(" \t") + 5));
@@ -123,6 +123,25 @@ WannierProvenance parse_win_provenance(const std::string& winfile)
         if (sq.rfind("end", 0) == 0)
         {
             current_block.clear();
+            continue;
+        }
+
+        if (current_block == "kpoint_path")
+        {
+            // Each line is one segment: "Lbl1 kx ky kz  Lbl2 kx ky kz". Append the
+            // start node, and the end node only when it differs from the previous
+            // node, so consecutive shared endpoints collapse to one path (G-M-K-G).
+            std::istringstream ls(line);
+            std::string l1, l2; std::array<double,3> k1{{0,0,0}}, k2{{0,0,0}};
+            if (ls >> l1 >> k1[0] >> k1[1] >> k1[2] >> l2 >> k2[0] >> k2[1] >> k2[2])
+            {
+                if (w.kpoint_path.empty())
+                {
+                    KpathNode n; n.label = l1; n.k = k1; w.kpoint_path.push_back(n);
+                }
+                KpathNode n2; n2.label = l2; n2.k = k2; w.kpoint_path.push_back(n2);
+                w.kpoint_path_source = "win";
+            }
             continue;
         }
 
@@ -168,4 +187,41 @@ WannierProvenance parse_win_provenance(const std::string& winfile)
                     (w.has_num_bands && w.has_num_wann && w.num_bands > w.num_wann);
 
     return w;
+}
+
+std::vector<KpathNode> parse_qe_bands_kpath(const std::string& bandsfile)
+{
+    std::ifstream f(bandsfile.c_str());
+    if (!f.is_open()) throw std::runtime_error("parse_qe_bands_kpath: cannot open " + bandsfile);
+
+    std::string raw;
+    std::vector<KpathNode> out;
+    while (std::getline(f, raw))
+    {
+        if (squash(raw).rfind("k_points", 0) != 0) continue;   // find the K_POINTS line
+        if (lower(raw).find("crystal_b") == std::string::npos)
+            throw std::runtime_error("parse_qe_bands_kpath: only 'K_POINTS crystal_b' band paths are supported");
+        // next non-empty line: node count
+        int n = 0;
+        while (std::getline(f, raw)) { std::istringstream c(raw); if (c >> n) break; }
+        for (int j = 0; j < n && std::getline(f, raw); ++j)
+        {
+            // "kx ky kz nseg ! LABEL"  (label after '!' optional)
+            std::string body = raw, label;
+            const size_t bang = raw.find('!');
+            if (bang != std::string::npos)
+            {
+                body  = raw.substr(0, bang);
+                label = trim(raw.substr(bang + 1));
+            }
+            std::istringstream ls(body);
+            KpathNode nd; double nseg = 0;
+            if (ls >> nd.k[0] >> nd.k[1] >> nd.k[2]) { ls >> nseg; }
+            nd.label = label.empty() ? ("k" + std::to_string(j)) : label;
+            out.push_back(nd);
+        }
+        break;
+    }
+    if (out.empty()) throw std::runtime_error("parse_qe_bands_kpath: no 'K_POINTS crystal_b' band path in " + bandsfile);
+    return out;
 }

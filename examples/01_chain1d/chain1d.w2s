@@ -1,0 +1,9 @@
+{
+  // Minimal tight-binding run: expand the primitive H(R) in chain1d_hr.dat into
+  // a 400-site supercell and write the sparse Hamiltonian chain1d.HAM.CSR.
+  // A plain Hamiltonian DOS needs only chain1d_hr.dat; .uc/.xyz are read here
+  // because they are present, but no operator in this run requires them.
+  "label": "chain1d",
+  "mode": "sparse",
+  "supercell": [400, 1, 1]
+}

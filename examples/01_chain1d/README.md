@@ -52,28 +52,56 @@ blocks $H(R)$ are the entire model, and nothing the pipeline does adds physics t
 them. Expanding to a supercell only chooses how finely $k$ is sampled, and KPM only
 chooses how finely $E$ is resolved.
 
-## Step 1: build the chain as a primitive operator
+## Step 1: the minimal input for a tight-binding calculation
 
-```bash
-bash run.sh chain1d 400       # generates models/tb/chain1d/ (and a first DOS plot)
-cd models/tb/chain1d          # the rest of this tutorial runs from here
+This is the question the example answers concretely: **what is the smallest set of
+files `wannier2sparse` needs to expand a tight-binding model and produce a density
+of states?** The files are committed in this directory, so you can read them before
+running anything:
+
+| File | Required? | What it holds |
+|------|-----------|---------------|
+| [`chain1d_hr.dat`](chain1d_hr.dat) | **yes** | the Wannier90 real-space Hamiltonian $H(\mathbf{R})$ — the three blocks $H(0)=0$, $H(\pm1)=-1$. For a plain Hamiltonian DOS this is the **only** model file the tool reads. |
+| [`chain1d.w2s`](chain1d.w2s) | yes | the run description (label, `sparse` mode, supercell size) — input, not model data; the same run can instead be given on the command line. |
+| [`chain1d.uc`](chain1d.uc) | no | the lattice vector. Read only when an operator needs geometry (velocity, position); a Hamiltonian-only run ignores it. |
+| [`chain1d.xyz`](chain1d.xyz) | no | the orbital position (one site at the origin). Same: needed only for position-dependent operators. |
+
+So the irreducible minimum for the DOS in this tutorial is **`chain1d_hr.dat` plus a
+run specification**; `.uc` and `.xyz` are here for completeness and become required
+the moment you ask for a velocity or any operator that carries a position. This is
+the tight-binding end of the spectrum: a single hand-written `_hr.dat` with every
+degeneracy `ndegen = 1`, so the numbers are the hoppings themselves with nothing to
+normalize. Example 02 shows the other end — a real Wannier model, where the minimal
+set grows by the Wigner-Seitz file `_wsvec.dat`.
+
+The `_hr.dat` format is one header line, `num_wann`, the number of $\mathbf{R}$
+points, the `ndegen` list, then one `R1 R2 R3  m n  Re Im` row per matrix element:
+
+```
+chain1d (generated)
+1
+3
+1 1 1
+-1 0 0  1 1  -1.0000000000 0.0000000000
+0 0 0  1 1  0.0000000000 0.0000000000
+1 0 0  1 1  -1.0000000000 0.0000000000
 ```
 
-This writes the model in the Wannier90 real-space gauge: a `_hr.dat` holding the
-three blocks $H(0)=0$ and $H(\pm 1)=-1$, a `.uc` with the lattice vector, and a
-`.xyz` with the single orbital at the origin. Every degeneracy `ndegen` is $1$, so
-the numbers are the hoppings themselves with no normalization to undo. The next
-step reads these files.
+These same files are also written by [`gen_models.py`](../gen_models.py) (used by
+`run.sh` for the rest of the gallery); the copies here are byte-identical, so the
+example is self-contained and runnable as-is.
 
-## Step 2: write the input file and run it
+## Step 2: run it
 
-A run is described by a small `.w2s` file. Put
+A run is described by the small [`chain1d.w2s`](chain1d.w2s) already in this
+directory,
 
 ```json
 { "label": "chain1d", "mode": "sparse", "supercell": [400, 1, 1] }
 ```
 
-in `chain1d.w2s` and run it:
+Run it from here (build the tool once, see the top-level [README](../../README.md);
+`wannier2sparse` below is `../../build/wannier2sparse` unless it is on your `PATH`):
 
 ```bash
 wannier2sparse -x chain1d.w2s        # -> chain1d.HAM.CSR
@@ -90,7 +118,7 @@ The expanded matrix is the band sampled at $N$ momenta, so its sorted spectrum
 [`w2s_dos.py`](../w2s_dos.py) plots it directly from the CSR:
 
 ```bash
-python3 ../../../w2s_dos.py chain1d.HAM.CSR --mode spectrum --out chain1d_bands.png
+python3 ../w2s_dos.py chain1d.HAM.CSR --mode spectrum --out chain1d_bands.png
 ```
 
 The supercell-free route is [`tools/hr_exactdiag.py`](../../tools/hr_exactdiag.py),
@@ -109,8 +137,8 @@ must land on one curve:
    [`w2s_dos.py`](../w2s_dos.py).
 
 ```bash
-python3 ../../../../tools/hr_exactdiag.py dos chain1d --emin -2.6 --emax 2.6 --out chain1d_ondemand   # route 2
-python3 ../../../w2s_dos.py chain1d.HAM.CSR --mode dos-exact --eta 0.025                               # route 3
+python3 ../../tools/hr_exactdiag.py dos chain1d --emin -2.6 --emax 2.6 --out chain1d_ondemand   # route 2
+python3 ../w2s_dos.py chain1d.HAM.CSR --mode dos-exact --eta 0.025                               # route 3
 ```
 
 They coincide (FIG. 1). That is the central check: the supercell engine adds no
@@ -126,11 +154,11 @@ needs a spectrum dense enough that the broadening covers several levels, so firs
 expand to a larger cell, then let one `compare` command overlay all four routes:
 
 ```bash
-echo '{ "label": "chain1d", "mode": "sparse", "supercell": [4000, 1, 1] }' > chain1d.w2s
-wannier2sparse -x chain1d.w2s            # 4000-site chain1d.HAM.CSR
-python3 ../../../w2s_dos.py chain1d.HAM.CSR --mode compare --analytic chain1d \
+echo '{ "label": "chain1d", "mode": "sparse", "supercell": [4000, 1, 1] }' > chain1d_big.w2s
+wannier2sparse -x chain1d_big.w2s        # 4000-site chain1d.HAM.CSR (keeps the minimal chain1d.w2s intact)
+python3 ../w2s_dos.py chain1d.HAM.CSR --mode compare --analytic chain1d \
         --overlay chain1d_ondemand.json --moments 512 --vectors 30 --ymax 1.5 \
-        --out ../../../img/chain1d_validation.png
+        --out ../img/chain1d_validation.png
 ```
 
 ![Density of states of the 1D chain from four routes that overlap: closed form, exact diagonalization of H(k), exact diagonalization of the sparse supercell matrix, and KPM](../img/chain1d_validation.png)
@@ -173,6 +201,10 @@ transport code actually sees. See [lsquant](TODO-LSQUANT-URL).
 - The supercell size $N$ sets the energy sampling and the KPM moment count $M$
   sets the broadening; a smooth, faithful curve needs both.
 - A run is one small `.w2s` file, executed with `wannier2sparse -x model.w2s`.
+- The **minimal input for a tight-binding DOS is a single `_hr.dat`** plus a run
+  specification; `.uc` and `.xyz` are required only for operators that carry a
+  position. Example 02 takes this to a real Wannier model, where the minimal set
+  gains the Wigner-Seitz file `_wsvec.dat`.
 
 Later tutorials reuse this exact pipeline, primitive $O_{ij}(R)$ to supercell CSR
 to KPM density, on models where the band structure is no longer a single cosine.
